@@ -8,6 +8,7 @@ from typing import List
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
+__date__ = "5 Dec 2016"
 
 
 class Var(object):
@@ -109,8 +110,8 @@ class Var(object):
 
     def notify(self, listener, value_only: bool = False):
         """
-        Registers listener as a callable object (a function or lambda gnerally) that will be notified when the
-        value of this variable changes.
+        Registers listener as a callable object (a function or lambda gnerally) that will be
+        notified when the value of this variable changes.
 
         :param listener: the listener to notify
         :param bool value_only: listener will be notified with only one argument, the new value
@@ -122,10 +123,11 @@ class Var(object):
     def stop_notifying(self, listener):
         """
         Removes listener from the list of callable objects that are notified when the value changes
+
         :param listener: the listener to remove
-        :return:
         """
-        self.__listeners.remove(listener)
+        if listener in self.__listeners:
+            self.__listeners.remove(listener)
         if listener in self.__values_only:
             self.__values_only.remove(listener)
 
@@ -165,14 +167,20 @@ class Var(object):
                 listener(self, old_val, new_val)
 
     def __enter__(self):
+        """ For use with Python's "with" construct. """
         return self.__UnchangedException
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """ For use with Python's "with" construct. """
         if exc_type is not self.__UnchangedException:
             self.fire_notifications()
             return False
         else:
             return True
+
+    class __UnchangedException(BaseException):
+        """ For use with Python's "with" construct. """
+        pass
 
     def __str__(self) -> str:
         return str(self.value)
@@ -312,9 +320,6 @@ class Var(object):
             self.value = self.value % other
         return self
 
-    class __UnchangedException(BaseException):
-        pass
-
 
 class FormattableVar(Var):
     """
@@ -332,7 +337,7 @@ class FormattableVar(Var):
         My name is Joe, and I am 24 years old.
     """
 
-    def __init__(self, str_format, bound_vars: List[Var], name=None):
+    def __init__(self, str_format: str, bound_vars: List[Var], name=None):
         Var.__init__(self, name=name)
         self.__format = str_format
         self.__vars = bound_vars
@@ -343,8 +348,10 @@ class FormattableVar(Var):
         self.__update_format()
 
     def __var_changed(self, var, old_val, new_val):
+        """ Be notified when any underlying variables change. """
         self.__update_format()
 
     def __update_format(self):
+        """ Update the formattable string with new values. """
         var_vals = [v.value for v in self.__vars]
         self.value = self.__format.format(*var_vals)

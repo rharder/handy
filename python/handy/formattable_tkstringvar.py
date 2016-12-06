@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-A multi-line text area based on tkinter.scrolledtext.ScrolledText that can be bound to a StringVar
+A subclass of tk.StringVar that holds a formattable string that is updated
+whenever the list of underyling tk.XxxVars are updated.
 """
 import tkinter as tk
 
@@ -9,7 +10,7 @@ __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
 
 
-class FormattableStringVar(tk.StringVar):
+class FormattableTkStringVar(tk.StringVar):
     """
     An extension of the tk.StringVar that takes a formattable string, eg, "Age: {}" and a list
     of tk.xxxVar objects, and updates the formatted string whenever one of the underlying vars
@@ -20,7 +21,7 @@ class FormattableStringVar(tk.StringVar):
         self.red = tk.IntVar()
         self.green = tk.IntVar()
         self.blue = tk.IntVar()
-        self.hex = FormattableStringVar("#{:02X}{:02X}{:02X}", [self.red, self.green, self.blue])
+        self.hex = FormattableTkStringVar("#{:02X}{:02X}{:02X}", [self.red, self.green, self.blue])
         ...
         hex_label = tk.Label(frame, textvariable=self.hex)
     """
