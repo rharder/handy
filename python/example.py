@@ -2,9 +2,8 @@
 """
 Examples of how to use various items in this package.
 """
-import tkinter as tk
-
 import math
+import tkinter as tk
 
 import handy
 
@@ -20,8 +19,7 @@ def main():
     # demo_formattable_tkstringvar()
     # demo_bind_tk_attribute()
     # demo_bind_tk_method()
-    # demo_bettertkvar()
-    demo_before_and_after()
+    # demo_before_and_after()
 
 
 def demo_bindable_variable():
@@ -152,26 +150,7 @@ def demo_bind_tk_method():
     window.mainloop()
 
 
-
-# def demo_bettertkvar():
-#     window = tk.Tk()
-#     var = handy.BetterTkVar()
-#     txt = tk.Entry(window, textvariable=var.stringvar)
-#     txt.pack()
-#     slider = tk.Scale(window, variable=var.intvar)
-#     slider.pack()
-#     chk = tk.Checkbutton(window, text="Boolean", variable=var.booleanvar)
-#     chk.pack()
-#     var.value = "txt.value"
-#     var.set("txt.set")
-#     var.value = 3
-#     print(var.value, type(var.value))
-#     # var.value += 1
-#     window.mainloop()
-
-
 def demo_before_and_after():
-
     print()
     print("::BeforeAndAfter with a timer")
     with handy.BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
@@ -183,12 +162,12 @@ def demo_before_and_after():
         for x in range(3000):
             math.factorial(x)
 
-
     print("::BeforeAndAfter with no messages")
     with handy.BeforeAndAfter() as ba:
         for x in range(3000):
             math.factorial(x)
     print("Elapsed time:", ba.elapsed)
+
 
 if __name__ == "__main__":
     main()

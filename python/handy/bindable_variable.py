@@ -80,10 +80,17 @@ class Var(object):
         This small example could surely be handled more cleanly with the fire_notifications() method,
         but the with construct is there in case that helps make your design smoother.
     """
+    __name_counter = 0
 
     def __init__(self, value=None, name: str = None):
         self.__value = value
-        self.__name = name
+
+        if name is None:
+            self.__name = "Var_{}".format(Var.__name_counter)
+            Var.__name_counter += 1
+        else:
+            self.__name = name
+
         self.__listeners = []
         self.__values_only = []  # List of listeners who want only the new value as an argument
         self.__no_args = []  # List of listeners who should not receive any arguments
@@ -107,9 +114,11 @@ class Var(object):
             self.__notify_listeners(old_val, new_val)
 
     def get(self):
+        """ Helper for when the value must be retrieved with a function. """
         return self.value
 
     def set(self, new_val):
+        """ Helper for when the value must be set with a function. """
         self.value = new_val
 
     @property
@@ -384,17 +393,3 @@ class FormattableVar(Var):
         """ Update the formattable string with new values. """
         var_vals = [v.value for v in self.__vars]
         self.value = self.__format.format(*var_vals)
-
-
-class EmulateTkVar(Var):
-    def trace(self, mode, callback):
-        if mode == "w" or mode == "W":
-            name = self.name
-            index = 0
-            self.notify(lambda: callback(name, index, mode), no_args=True)
-
-    def get(self):
-        return self.value
-
-    def set(self, new_val):
-        self.value = new_val

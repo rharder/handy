@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-
+Uses a Python "with" construct to set up a timer with optional
+messages to display before and after code executes.
 """
 import sys
 
@@ -13,46 +14,41 @@ __date__ = "5 Dec 2016"
 
 class BeforeAndAfter:
     """
-    Handy context manager for printing a line that has some processing before finishing.
+    Uses a Python "with" construct to set up a timer with optional
+    messages to display before and after code executes.
 
     Example:
-    Performing long calculation...
 
-    and a moment later:
-
-    Performing long calculation...Done.
+        with handy.BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
+            for x in range(3000):
+                math.factorial(x)
     """
 
     def __init__(self, before_msg: str = None,
                  after_msg: str = None,
-                 error_msg: str = None,# test: bool = True, timer: bool = False,
+                 error_msg: str = None,
                  file=sys.stdout):
-        self.before_msg = before_msg
-        self.after_msg = after_msg
-        # self.test = test
-        self.file = file
-        self.error_msg = error_msg
-        # self.timer = timer
-        self.start = time.time()
+
+        self.__before_msg = before_msg
+        self.__after_msg = after_msg
+        self.__file = file
+        self.__error_msg = error_msg
+        self.__start = None  # type: float
+        self.__end = None  # type: float
 
     def __enter__(self):
-        if self.before_msg is not None:
-            print(self.before_msg, end='', flush=True, file=self.file)
+        if self.__before_msg is not None:
+            print(self.__before_msg, end='', flush=True, file=self.__file)
+        self.__start = time.time()
         return self
 
     def __exit__(self, ex_type, ex_value, ex_traceback):
+        self.__end = time.time()
         if ex_type is None:  # No error
-            if self.after_msg is not None:
-                # Try formatting
-                msg = self.after_msg.format(self.elapsed)
-                print(msg, file=self.file)
-
-        # elif self.error_msg is not None:  # Else if there was an error and there is an error message
-        #     if self.timer:
-        #         print(self.error_msg.format(self.elapsed), file=self.file)
-        #     else:
-        #         print(self.error_msg, file=self.file)
+            if self.__after_msg is not None:
+                msg = self.__after_msg.format(self.elapsed)
+                print(msg, file=self.__file)
 
     @property
     def elapsed(self):
-        return time.time() - self.start
+        return self.__end - self.__start

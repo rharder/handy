@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """
-
-
-
-A multi-line text area based on tkinter.scrolledtext.ScrolledText that can
-be bound to a StringVar
+A collection of functions and classes to help with tkinter.
 """
 import tkinter as tk
 from tkinter import scrolledtext
-from .bindable_variable import Var
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -92,87 +87,6 @@ class FormattableTkStringVar(tk.StringVar):
         var_vals = [v.get() for v in self.__vars]  # Collect values for all vars
         self.set(self.__format.format(*var_vals))  # Format string, unpacking the format(..) arguments
 
-
-#
-# class BetterTkVar(Var):
-#     def __init__(self, **kwargs):
-#         Var.__init__(self, **kwargs)
-#         self.__stringvar = None  # type: tk.StringVar
-#         self.__intvar = None  # type: tk.IntVar
-#         self.__doublevar = None  # type: tk.DoubleVar
-#         self.__booleanvar = None  # type: tk.BooleanVar
-#
-#     @property
-#     def stringvar(self):
-#
-#         def var_changed(name, index, mode):
-#             self.value = self.__stringvar.get()
-#
-#         def notify_var():
-#             try:
-#                 self.__stringvar.set(self.value)
-#             except:
-#                 pass
-#
-#         if self.__stringvar is None:
-#             self.__stringvar = tk.StringVar(name=self.name)
-#             self.__stringvar.trace("w", var_changed)
-#             self.notify(notify_var, no_args=True)
-#         return self.__stringvar
-#
-#     @property
-#     def intvar(self):
-#
-#         def var_changed(name, index, mode):
-#             self.value = self.__intvar.get()
-#
-#         def notify_var():
-#             try:
-#                 self.__intvar.set(int(self.value))
-#             except:
-#                 pass
-#
-#         if self.__intvar is None:
-#             self.__intvar = tk.IntVar(name=self.name)
-#             self.__intvar.trace("w", var_changed)
-#             self.notify(notify_var, no_args=True)
-#         return self.__intvar
-#
-#     @property
-#     def doublevar(self):
-#
-#         def var_changed(name, index, mode):
-#             self.value = self.__doublevar.get()
-#
-#         def notify_var():
-#             try:
-#                 self.__doublevar.set(float(self.value))
-#             except:
-#                 pass
-#
-#         if self.__doublevar is None:
-#             self.__doublevar = tk.DoubleVar(name=self.name)
-#             self.__doublevar.trace("w", var_changed)
-#             self.notify(notify_var, no_args=True)
-#         return self.__doublevar
-#
-#     @property
-#     def booleanvar(self):
-#
-#         def var_changed(name, index, mode):
-#             self.value = self.__booleanvar.get()
-#
-#         def notify_var():
-#             try:
-#                 self.__booleanvar.set(bool(self.value))
-#             except:
-#                 pass
-#
-#         if self.__booleanvar is None:
-#             self.__booleanvar = tk.DoubleVar(name=self.name)
-#             self.__booleanvar.trace("w", var_changed)
-#             self.notify(notify_var, no_args=True)
-#         return self.__booleanvar
 
 class BindableTextArea(tk.scrolledtext.ScrolledText):
     """
