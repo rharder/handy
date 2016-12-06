@@ -42,6 +42,11 @@ class Var(object):
 
         x.notify(self.tk_root.wm_title, value_only=True)
 
+    When registering with the notify() method, the no_args parameter can be set to True
+    (default is False) so that the callback function will be called with no parameters.
+
+        x.notify(self.something_happened, no_args=True)
+
     If the value itself is mutable, such as with a list, the fire_notifications() method can
     be used to force a notification to be sent to all listeners.
 
@@ -80,7 +85,8 @@ class Var(object):
         self.__value = value
         self.__name = name
         self.__listeners = []
-        self.__values_only = []  # List of those that only want to receive new value upon notification
+        self.__values_only = []  # List of listeners who want only the new value as an argument
+        self.__no_args = []  # List of listeners who should not receive any arguments
 
     @property
     def value(self):
@@ -108,17 +114,24 @@ class Var(object):
     def name(self, new_val: str):
         self.__name = new_val
 
-    def notify(self, listener, value_only: bool = False):
+    def notify(self, listener, value_only: bool = False, no_args=False):
         """
         Registers listener as a callable object (a function or lambda gnerally) that will be
         notified when the value of this variable changes.
 
+        The options value_only and no_args are mutually exclusive.  If both are set
+        to True, then it is unspecified which form of notification will occur: one
+        argument or no arguments.
+
         :param listener: the listener to notify
         :param bool value_only: listener will be notified with only one argument, the new value
+        :param bool no_args: listener will be notified with no arguments
         """
         self.__listeners.append(listener)
         if value_only:
             self.__values_only.append(listener)
+        if no_args:
+            self.__no_args.append(listener)
 
     def stop_notifying(self, listener):
         """
@@ -130,6 +143,8 @@ class Var(object):
             self.__listeners.remove(listener)
         if listener in self.__values_only:
             self.__values_only.remove(listener)
+        if listener in self.__no_args:
+            self.__no_args.remove(listener)
 
     def stop_notifying_all(self):
         """
@@ -137,6 +152,7 @@ class Var(object):
         """
         self.__listeners.clear()
         self.__values_only.clear()
+        self.__no_args.clear()
 
     def fire_notifications(self):
         """
@@ -161,8 +177,15 @@ class Var(object):
         :param new_val: new value that was set
         """
         for listener in self.__listeners:
-            if listener in self.__values_only:
+            # Arguments: none
+            if listener in self.__no_args:
+                listener()
+
+            # Arguments: new value only
+            elif listener in self.__values_only:
                 listener(new_val)
+
+            # Arguments: variable, old value, new value
             else:
                 listener(self, old_val, new_val)
 
@@ -355,3 +378,17 @@ class FormattableVar(Var):
         """ Update the formattable string with new values. """
         var_vals = [v.value for v in self.__vars]
         self.value = self.__format.format(*var_vals)
+
+
+class EmulateTkVar(Var):
+    def trace(self, mode, callback):
+        if mode == "w" or mode == "W":
+            name = self.name
+            index = 0
+            self.notify(lambda: callback(name, index, mode), no_args=True)
+
+    def get(self):
+        return self.value
+
+    def set(self, new_val):
+        self.value = new_val
