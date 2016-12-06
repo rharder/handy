@@ -106,6 +106,12 @@ class Var(object):
             self.__value = new_val
             self.__notify_listeners(old_val, new_val)
 
+    def get(self):
+        return self.value
+
+    def set(self, new_val):
+        self.value = new_val
+
     @property
     def name(self) -> str:
         return self.__name

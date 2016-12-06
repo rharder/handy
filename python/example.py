@@ -4,6 +4,8 @@ Examples of how to use various items in this package.
 """
 import tkinter as tk
 
+import math
+
 import handy
 
 __author__ = "Robert Harder"
@@ -18,7 +20,8 @@ def main():
     # demo_formattable_tkstringvar()
     # demo_bind_tk_attribute()
     # demo_bind_tk_method()
-    # demo_emulatetkvar()
+    # demo_bettertkvar()
+    demo_before_and_after()
 
 
 def demo_bindable_variable():
@@ -134,7 +137,7 @@ def demo_formattable_tkstringvar():
 def demo_bind_tk_attribute():
     window = tk.Tk()
     var = tk.StringVar()
-    label = tk.Label(window, text="demo_bind_tk_attribute")
+    label = tk.Label(window, text="Blue is success: demo_bind_tk_attribute")
     label.pack()
     handy.bind_tk_attribute(label, "bg", var)
     var.set("light blue")
@@ -145,21 +148,47 @@ def demo_bind_tk_method():
     window = tk.Tk()
     var = tk.StringVar()
     handy.bind_tk_method(window.title, var)
-    var.set("demo_bind_tk_method")
+    var.set("Success: demo_bind_tk_method")
     window.mainloop()
-#
-# def demo_emulatetkvar():
+
+
+
+# def demo_bettertkvar():
 #     window = tk.Tk()
-#     var = handy.EmulateTkVar()
-#     txt = tk.Entry(window, textvariable=var)
+#     var = handy.BetterTkVar()
+#     txt = tk.Entry(window, textvariable=var.stringvar)
 #     txt.pack()
-#     txt.value = "txt.value"
+#     slider = tk.Scale(window, variable=var.intvar)
+#     slider.pack()
+#     chk = tk.Checkbutton(window, text="Boolean", variable=var.booleanvar)
+#     chk.pack()
+#     var.value = "txt.value"
 #     var.set("txt.set")
 #     var.value = 3
-#     var.value += 1
+#     print(var.value, type(var.value))
+#     # var.value += 1
 #     window.mainloop()
 
 
+def demo_before_and_after():
+
+    print()
+    print("::BeforeAndAfter with a timer")
+    with handy.BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
+        for x in range(3000):
+            math.factorial(x)
+
+    print("::BeforeAndAfter without a timer")
+    with handy.BeforeAndAfter(before_msg="Begin... ", after_msg="Done."):
+        for x in range(3000):
+            math.factorial(x)
+
+
+    print("::BeforeAndAfter with no messages")
+    with handy.BeforeAndAfter() as ba:
+        for x in range(3000):
+            math.factorial(x)
+    print("Elapsed time:", ba.elapsed)
 
 if __name__ == "__main__":
     main()
