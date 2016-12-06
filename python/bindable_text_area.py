@@ -34,8 +34,8 @@ class BindableTextArea(tk.scrolledtext.ScrolledText):
             """ At conclusion of operation, resume the trace. """
             self.__parent._trace_id = self.__parent._textvariable.trace("w", self.__parent._variable_value_changed)
 
-    def __init__(self, parent, textvariable: tk.StringVar = None, **kw):
-        tk.scrolledtext.ScrolledText.__init__(self, parent, **kw)
+    def __init__(self, parent, textvariable: tk.StringVar = None, **kwargs):
+        tk.scrolledtext.ScrolledText.__init__(self, parent, **kwargs)
         self._textvariable = None  # type: tk.StringVar
         self._trace_id = None
         if textvariable is None:
