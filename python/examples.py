@@ -153,6 +153,10 @@ def demo_bind_tk_method():
     window = tk.Tk()
     var = tk.StringVar()
     handy.bind_tk_method(window.title, var)
+
+    tk.Label(window, text="Window title:").pack(pady=10)
+    tk.Entry(window, textvariable=var).pack(padx=20, pady=10)
+
     var.set("Success: demo_bind_tk_method")
     window.mainloop()
 
