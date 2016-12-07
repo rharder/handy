@@ -23,3 +23,4 @@ from .before_after import BeforeAndAfter
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
+__license__ = "Public Domain"

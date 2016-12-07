@@ -8,6 +8,7 @@ from tkinter import scrolledtext
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
+__license__ = "Public Domain"
 
 
 def main():
