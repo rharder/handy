@@ -12,7 +12,7 @@ Example:
 
 """
 
-from .tkinter import *
+from .tkinter_tools import *
 from .bindable_variable import *
 from .before_after import *
 

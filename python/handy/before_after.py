@@ -12,6 +12,30 @@ __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
 
 
+def main():
+    demo_before_and_after()
+
+
+def demo_before_and_after():
+    import math
+    print()
+    print("::BeforeAndAfter with a timer")
+    with BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
+        for x in range(3000):
+            math.factorial(x)
+
+    print("::BeforeAndAfter without a timer")
+    with BeforeAndAfter(before_msg="Begin... ", after_msg="Done."):
+        for x in range(3000):
+            math.factorial(x)
+
+    print("::BeforeAndAfter with no messages")
+    with BeforeAndAfter() as ba:
+        for x in range(3000):
+            math.factorial(x)
+    print("Elapsed time:", ba.elapsed)
+
+
 class BeforeAndAfter:
     """
     Uses a Python "with" construct to set up a timer with optional
@@ -19,7 +43,7 @@ class BeforeAndAfter:
 
     Example:
 
-        with handy.BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
+        with BeforeAndAfter(before_msg="Begin... ", after_msg="Done: {:0.2f} sec"):
             for x in range(3000):
                 math.factorial(x)
     """
@@ -52,3 +76,7 @@ class BeforeAndAfter:
     @property
     def elapsed(self):
         return self.__end - self.__start
+
+
+if __name__ == "__main__":
+    main()
