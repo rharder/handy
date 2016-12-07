@@ -14,12 +14,12 @@ __date__ = "5 Dec 2016"
 
 def main():
     print("Uncomment a function to demonstrate a capability.")
-    # demo_bindable_variable()
-    # demo_bindable_text_area()
-    # demo_formattable_tkstringvar()
-    # demo_bind_tk_attribute()
-    # demo_bind_tk_method()
-    # demo_before_and_after()
+    demo_bindable_variable()
+    demo_bindable_text_area()
+    demo_formattable_tkstringvar()
+    demo_bind_tk_attribute()
+    demo_bind_tk_method()
+    demo_before_and_after()
 
 
 def demo_bindable_variable():
@@ -134,11 +134,18 @@ def demo_formattable_tkstringvar():
 
 def demo_bind_tk_attribute():
     window = tk.Tk()
+
     var = tk.StringVar()
-    label = tk.Label(window, text="Blue is success: demo_bind_tk_attribute")
+
+    label = tk.Label(window, text="Background color is bound to variable")
     label.pack()
     handy.bind_tk_attribute(label, "bg", var)
-    var.set("light blue")
+
+    colors = ["light gray", "light blue", "yellow", "green"]
+    for color in colors:
+        tk.Radiobutton(window, text=color, variable=var, value=color, bg=color).pack()
+    var.set(colors[0])
+
     window.mainloop()
 
 
