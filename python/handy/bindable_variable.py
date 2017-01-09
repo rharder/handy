@@ -174,18 +174,25 @@ class Var(object):
 
         :param new_val: the new value to save in the Var
         """
-        old_val = self.__value
-        if old_val != new_val:
-            self.__value = new_val
-            self.__notify_listeners(old_val, new_val)
+        self.set(new_val)
 
     def get(self):
         """ Helper for when the value must be retrieved with a function. """
         return self.value
 
-    def set(self, new_val):
-        """ Helper for when the value must be set with a function. """
-        self.value = new_val
+    def set(self, new_val, force_notify=False):
+        """
+        Sets the value as an alternative usage to x.value = 42.  Also supports
+        the option of forcing the notification of listeners, even when the
+        value is not in fact changed.
+
+        :param new_val: The new value for the variable
+        :param force_notify: Notify listeners even if the value did not actually change
+        """
+        old_val = self.__value
+        if old_val != new_val or force_notify:
+            self.__value = new_val
+            self.__notify_listeners(old_val, new_val)
 
     @property
     def name(self) -> str:
