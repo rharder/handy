@@ -3,7 +3,9 @@
 A collection of functions and classes to help with tkinter.
 """
 import tkinter as tk
+import tkinter.ttk as ttk
 from tkinter import scrolledtext
+from .prefs import Prefs
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -241,6 +243,132 @@ class BindableTextArea(tk.scrolledtext.ScrolledText):
         with BindableTextArea._SuspendTrace(self):  # Suspend trace to avoid infinite recursion
             if self.textvariable:
                 self.textvariable.set(text)
+
+
+class ToggledFrame(tk.LabelFrame):
+    """
+    Heavily modified from
+    http://stackoverflow.com/questions/13141259/expandable-and-contracting-frame-in-tkinter
+    """
+
+    def __init__(self, parent, text="", prefs: Prefs = None, *args, **options):
+        tk.LabelFrame.__init__(self, parent, text=text, *args, **options)
+
+        self.__title = text
+        self.__hidden_text = None
+        self.__prefs = prefs
+
+        # Data mechanism for show/hide
+        name = "ToggledFrame_{}".format(text)
+        self.show = tk.IntVar(name=name)
+        if self.__prefs:
+            self.show.set(self.__prefs.get(name, 1))  # Retrieve from prefs
+
+        def __update_show(name, value):
+            if self.__prefs:
+                self.__prefs.set(name, value)  # Save in prefs
+            self.update_gui_based_on_show()  # Update gui
+
+        self.show.trace("w", lambda name, index, mode, v=self.show: __update_show(name, v.get()))
+
+        # This will respond to a click in the frame and toggle the underlying variable
+        def frame_clicked(event):
+            # print(event)
+            self.show.set(int(not bool(self.show.get())))
+
+        self.bind("<Button-1>", frame_clicked)
+
+        # GUI elements
+        self.title_frame = ttk.Frame(self)
+        self.title_frame.pack(fill="x", expand=1)
+        self.subframe = tk.Frame(self, borderwidth=1)
+        self.update_gui_based_on_show()
+
+    def clear_subframe(self):
+        if self.subframe is not None:
+            for widget in self.subframe.winfo_children():
+                widget.destroy()
+        self.subframe.pack(fill="x", expand=1)
+        self.update_gui_based_on_show()
+
+    @property
+    def hidden_text(self):
+        return self.__hidden_text
+
+    @hidden_text.setter
+    def hidden_text(self, value):
+        self.__hidden_text = value
+        self.update_gui_based_on_show()
+
+    def update_gui_based_on_show(self):
+        if bool(self.show.get()):  # Show
+            # print("show", self.__title)
+            self.subframe.pack(fill="x", expand=1)
+            self.config(text=self.__title + " [-]")
+        else:  # Hide
+            # print("hide", self.__title)
+            resp = ""
+            if self.hidden_text is not None and self.hidden_text != "":
+                resp = " ({})".format(self.hidden_text)
+            self.config(text=self.__title + resp)
+            self.subframe.forget()
+
+
+class ToolTip(object):
+    """
+    create a tooltip for a given widget
+
+    Author: Wayne Brown
+    """
+
+    def __init__(self, widget, text='widget info'):
+        self.wait_time = 500  # miliseconds
+        self.wrap_length = 300  # pixels
+        self.widget = widget
+        self.text = text
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.widget.bind("<ButtonPress>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(self.wait_time, self.showtip)
+
+    def unschedule(self):
+        my_id = self.id
+        self.id = None
+        if my_id:
+            self.widget.after_cancel(my_id)
+
+    def showtip(self, event=None):
+        # x = y = 0
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        # creates a toplevel window
+        self.tw = tk.Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry("+%d+%d" % (x, y))
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                         background="#ffffff", relief='solid', borderwidth=1,
+                         wraplength=self.wrap_length)
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
 
 
 if __name__ == "__main__":

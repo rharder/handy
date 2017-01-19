@@ -12,9 +12,9 @@ __author__ = "Robert Harder"
 
 
 def main():
-    sys.argv += [r"c:\temp\vba\out.html",
-                 r"c:\temp\vba\Lab05 - Solutions.xlsm",
-                 r"c:\temp\vba\Lab25-Solution.xlsm"]
+    # sys.argv += [r"c:\temp\vba\out.html",
+    #              r"c:\temp\vba\Lab05 - Solutions.xlsm",
+    #              r"c:\temp\vba\Lab25-Solution.xlsm"]
     if len(sys.argv) <= 2:
         print("Usage: {} outfile.html file1.xlsm file2.xlsm ...".format(os.path.basename(__file__)))
         sys.exit(1)
