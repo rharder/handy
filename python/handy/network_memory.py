@@ -17,8 +17,8 @@ class NetworkMemory:
         self.log = logging.getLogger(__name__)
         self.local_addr = local_addr
         self.remote_addr = remote_addr
-        self._value = None
-        self.name = "tbd"
+        self._value = {}
+        # self.name = "tbd"
         self.loop = loop or asyncio.get_event_loop()
 
         self.log.debug("Created {}".format(self))
@@ -27,12 +27,12 @@ class NetworkMemory:
         self.transport, self.protocol = self.loop.run_until_complete(listen)  # Pause to connect
         self.log.debug("self.transport: {}".format(self.transport))
 
-    def get(self):
-        return self._value
+    def get(self, name, default=None):
+        return self._value.get(name, default)
 
-    def set(self, new_val):
-        self._value = new_val
-        data = {"name":self.name, "value":new_val}
+    def set(self, name, new_val):
+        self._value[name] = new_val
+        data = {"name":name, "value":new_val}
         json_data = json.dumps(data)
         self.log.debug("Sending to network: {}".format(json_data))
         self.transport.sendto(json_data.encode(), self.remote_addr)
@@ -45,10 +45,12 @@ class NetworkMemory:
     def datagram_received(self, data, addr):
         self.log.debug("datagram_received: {}".format(data))
         msg = json.loads(data.decode())
-        if msg.get("name") == self.name:
+        if "name" in msg:
+            name = msg.get("name")
             value = msg.get("value")
-            self.log.debug("Updating with network data: {}".format(value))
-            self._value = value
+            self.log.debug("Updating with network data: {} = {}".format(name, value))
+            self.set(name, value)
+            print("self._value:", self._value)
 
 class NetworkMemoryVar(Var):
     def __init__(self, addr, loop = None, **kwargs):
