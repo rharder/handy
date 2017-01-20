@@ -6,6 +6,8 @@ similar to the tkinter.StringVar, IntVar, etc classes.
 
 from typing import List
 
+import logging
+
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
@@ -149,6 +151,7 @@ class Var(object):
     __name_counter = 0
 
     def __init__(self, value=None, name: str = None):
+        self.log = logging.getLogger(__name__)
         self.__value = value
 
         if name is None:
@@ -204,7 +207,7 @@ class Var(object):
 
     def notify(self, listener, value_only: bool = False, no_args=False):
         """
-        Registers listener as a callable object (a function or lambda gnerally) that will be
+        Registers listener as a callable object (a function or lambda generally) that will be
         notified when the value of this variable changes.
 
         The options value_only and no_args are mutually exclusive.  If both are set
