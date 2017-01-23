@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 
-from .bindable_variable import Var
+from handy.bindable_variable import Var
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"

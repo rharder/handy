@@ -15,7 +15,8 @@ __license__ = "Public Domain"
 
 
 def main():
-    demo_bindable_variable()
+    # demo_bindable_variable()
+    demo_bindable_dictionary()
 
 
 def demo_bindable_variable():
@@ -77,6 +78,23 @@ def demo_bindable_variable():
     fv = FormattableVar("{} is {} years old", [person_name, person_age])
     fv.notify(print, value_only=True)
     person_age += 1
+
+def demo_bindable_dictionary():
+
+    def _bindable_dict_changed(d, key, old_val, new_val):
+        print("Dictionary changed: key={}, old_val={}, new_val={}".format(key, old_val, new_val), flush=True)
+
+    d = BindableDict()
+    d.notify(_bindable_dict_changed)
+
+    d.set("foo", "bar")
+    d.set("cats", 4)
+
+    with d:
+        d.set("dogs", 0)
+        print("before or after?", flush=True)
+        d.set("cats", 5)
+
 
 
 class Var(object):
@@ -470,6 +488,104 @@ class FormattableVar(Var):
         var_vals = [v.value for v in self.__vars]
         self.value = self.__format.format(*var_vals)
 
+
+class BindableDict(object):
+
+    __name_counter = 0
+
+    def __init__(self, name: str = None):
+        self.log = logging.getLogger(__name__)
+        self.__dict = {}
+
+        if name is None:
+            self.__name = "BindableDict_{}".format(BindableDict.__name_counter)
+            BindableDict.__name_counter += 1
+        else:
+            self.__name = name
+
+        self.__listeners = []
+        self.__changes = []
+        self.__suspend_notifications = False
+
+
+
+    def get(self, key, default=None):
+        """ Return the value for a given key or None if no default is given """
+        return self.__dict.get(key, default)
+
+    def set(self, key, new_val, force_notify=False):
+        """
+        Sets the value for a given key.
+
+        :param key: the key associated with the value
+        :param new_val: The new value for the variable
+        :param force_notify: Notify listeners even if the value did not actually change
+        """
+        old_val = self.__dict.get(key)
+        if old_val != new_val or force_notify:
+            self.__dict[key] = new_val
+            self.__changes.append([key, old_val, new_val])
+            self.__notify_listeners()
+
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @name.setter
+    def name(self, new_val: str):
+        self.__name = new_val
+
+    def notify(self, listener):#, value_only: bool = False, no_args=False):
+        """
+        Registers listener as a callable object (a function or lambda generally) that will be
+        notified when the value of this variable changes.
+
+        The options value_only and no_args are mutually exclusive.  If both are set
+        to True, then it is unspecified which form of notification will occur: one
+        argument or no arguments.
+
+        :param listener: the listener to notify
+        :param bool value_only: listener will be notified with only one argument, the new value
+        :param bool no_args: listener will be notified with no arguments
+        """
+        self.__listeners.append(listener)
+
+    def stop_notifying(self, listener):
+        """
+        Removes listener from the list of callable objects that are notified when the value changes
+
+        :param listener: the listener to remove
+        """
+        if listener in self.__listeners:
+            self.__listeners.remove(listener)
+
+    def stop_notifying_all(self):
+        """
+        Removes all listeners that are registered to be notified when the value changes.
+        """
+        self.__listeners.clear()
+
+    def __notify_listeners(self):
+        """
+        Internal method to notify the list of listeners.
+        """
+
+        if not self.__suspend_notifications:
+            changes = self.__changes.copy()
+            self.__changes.clear()
+            for listener in self.__listeners:
+                for key, old_val, new_val in changes:
+                    listener(self, key, old_val, new_val)
+
+    def __enter__(self):
+        """ For use with Python's "with" construct. """
+        self.__suspend_notifications = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """ For use with Python's "with" construct. """
+        self.__suspend_notifications = False
+        self.__notify_listeners()
 
 if __name__ == "__main__":
     main()
