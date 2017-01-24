@@ -19,7 +19,6 @@ from .tkinter_tools import \
     FormattableTkStringVar
 from .bindable_variable import Var, FormattableVar
 from .before_after import BeforeAndAfter
-from .network_memory import NetworkMemory
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
