@@ -507,7 +507,8 @@ class BindableDict(object):
         self.__changes = []
         self.__suspend_notifications = False
 
-
+    def __str__(self):
+        return "{}: {}".format(self.__class__.__name__, self.__dict)
 
     def get(self, key, default=None):
         """ Return the value for a given key or None if no default is given """

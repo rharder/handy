@@ -18,6 +18,8 @@ __license__ = "Public Domain"
 class NetworkMemory(BindableDict):
     def __init__(self, local_addr: (str, int), remote_addr: (str, int),
                  loop: asyncio.BaseEventLoop = None, multicast=False, **kwargs):
+        if not "name" in kwargs:
+            kwargs["name"] = socket.gethostname()
         super().__init__(**kwargs)
 
         # Data
@@ -55,7 +57,7 @@ class NetworkMemory(BindableDict):
         old_val = self.get(name)
 
         if force_notify or old_val != new_val:
-            data = {"name": name, "value": new_val, "timestamp": timestamp}
+            data = {"name": name, "value": new_val, "timestamp": timestamp, "host": self.name}
             json_data = json.dumps(data)
             self.log.debug("Sending to network: {}".format(json_data))
             self.transport.sendto(json_data.encode(), self.remote_addr)
@@ -72,9 +74,10 @@ class NetworkMemory(BindableDict):
         if "name" in msg:
             name = str(msg.get("name"))
             value = msg.get("value")
+            host = str(msg.get("host"))
             timestamp = int(msg.get("timestamp"))
             if timestamp > self._timestamps.get(name, 0):
-                self.log.debug("Updating with network data: {} = {}".format(name, value))
+                self.log.debug("Updating with network data from {}: {} = {}".format(host, name, value))
                 self.set(name, value)
             else:
                 self.log.debug("Received stale network data: {} = {}".format(name, value))
