@@ -1,5 +1,9 @@
 # handy
 
+![travis-ci build status](https://img.shields.io/travis/rharder/handy.svg?style=flat-square)
+
+![coveralls status](https://img.shields.io/coveralls/rharder/handy.svg?style=flat-square)
+
 .. image:: https://img.shields.io/travis/rharder/handy.svg?style=flat-square
     :target: https://travis-ci.org/rharder/handy
 
