@@ -42,6 +42,8 @@ class NetMemApp():
         txt_val.grid(row=1, column=1, sticky=tk.W+tk.E)
         btn_update = tk.Button(self.window, text="Update Memory", command=self.update_button_clicked)
         btn_update.grid(row=2, column=0, columnspan=2)
+        txt_key.bind('<Return>', lambda x: self.update_button_clicked())
+        txt_val.bind('<Return>', lambda x: self.update_button_clicked())
 
         txt_data = BindableTextArea(self.window, textvariable=self.data_var)
         txt_data.grid(row=3, column=0, columnspan=2)
