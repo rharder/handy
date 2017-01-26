@@ -5,6 +5,7 @@ import asyncio
 import json
 import socket
 import struct
+import threading
 import time
 
 from handy.bindable_variable import BindableDict
@@ -16,8 +17,9 @@ __license__ = "Public Domain"
 
 
 class NetworkMemory(BindableDict):
-    def __init__(self, local_addr: (str, int), remote_addr: (str, int),
-                 loop: asyncio.BaseEventLoop = None, multicast=False, **kwargs):
+    # def __init__(self, local_addr: (str, int), remote_addr: (str, int),
+    #              loop: asyncio.BaseEventLoop = None, multicast=False, **kwargs):
+    def __init__(self, local_addr: (str, int), remote_addr: (str, int), multicast=False, **kwargs):
         if not "name" in kwargs:
             kwargs["name"] = socket.gethostname()
         super().__init__(**kwargs)
@@ -25,13 +27,43 @@ class NetworkMemory(BindableDict):
         # Data
         self.local_addr = local_addr
         self.remote_addr = remote_addr
-        self.loop = loop or asyncio.get_event_loop()
+
+        # self.loop = loop or asyncio.get_event_loop()
+        self.loop = None  # type: asyncio.BaseEventLoop
+
+        self.multicast = multicast
         self._timestamps = {}  # maps keys to timestamp of change
 
+        # if multicast:
+        #     def _make_sock():
+        #         m_addr, port = self.local_addr
+        #         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        #         sock.bind(('', port))
+        #         group = socket.inet_aton(m_addr)
+        #         mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+        #         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        #         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #         # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        #         return sock
+        #     listen = self.loop.create_datagram_endpoint(lambda: self, sock=_make_sock())
+        # else:
+        #     listen = self.loop.create_datagram_endpoint(lambda: self, local_addr=self.local_addr)
+        #
+        # async def _connect():
+        #     print("Connecting datagram endpoint...")
+        #     self.transport, self.protocol = await listen()
+        #     self.log.debug("self.transport: {}".format(self.transport))
+        # self.loop.call_soon(_connect)
+        # self.transport, self.protocol = self.loop.run_until_complete(listen)  # Pause to connect
+
+
+    def connect(self, loop=None):
+        self.loop = loop or asyncio.get_event_loop()
+
         # Server
-        if multicast:
+        if self.multicast:
             def _make_sock():
-                m_addr, port = local_addr
+                m_addr, port = self.local_addr
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.bind(('', port))
                 group = socket.inet_aton(m_addr)
@@ -40,12 +72,23 @@ class NetworkMemory(BindableDict):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 return sock
-
             listen = self.loop.create_datagram_endpoint(lambda: self, sock=_make_sock())
         else:
             listen = self.loop.create_datagram_endpoint(lambda: self, local_addr=self.local_addr)
-        self.transport, self.protocol = self.loop.run_until_complete(listen)  # Pause to connect
-        self.log.debug("self.transport: {}".format(self.transport))
+
+        async def _connect():
+            print("Connecting datagram endpoint...")
+            self.transport, self.protocol = await listen.result()
+            self.log.debug("self.transport: {}".format(self.transport))
+        # self.loop.call_soon(_connect)
+        # self.loop.create_task(_connect())
+        # self.transport, self.protocol = self.loop.run_until_complete(listen)
+        future = asyncio.run_coroutine_threadsafe(_connect(), self.loop)
+
+        # self.log.debug("Transport {} created on thread {}".format(self.transport, threading.get_ident()))
+
+        # self.transport, self.protocol = await listen()
+
 
     def get(self, name: str, default=None):
         return super().get(str(name), default)
@@ -65,7 +108,7 @@ class NetworkMemory(BindableDict):
         super().set(name, new_val, force_notify=force_notify)
 
     def connection_made(self, transport):
-        self.log.debug("Connection made {}".format(transport))
+        self.log.debug("Connection made {} on thread {}".format(transport, threading.get_ident()))
         self.transport = transport
 
     def datagram_received(self, data, addr):
