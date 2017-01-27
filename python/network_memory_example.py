@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
 import logging
-import threading
 
 from experimental import *
 
@@ -10,6 +9,7 @@ logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 
 def main():
+    # example_NetworkMemoryVar()
     example_NetworkMemory()
 
 
@@ -27,19 +27,14 @@ def example_NetworkMemory():
     mem1.notify(when_mem1_changes)
     mem2.notify(when_mem2_changes)
 
-
-    mem1.connect(loop)
-    mem2.connect(loop)
-
     async def prompt():
         while True:
             key = input("Key? ")
-            if key != "":
-                value = input("Value? ")
-                mem1.set(key, value)
+            value = input("Value? ")
+            mem1.set(key, value)
             await asyncio.sleep(0.1)
 
-    # loop.create_task(prompt())
+    asyncio.ensure_future(prompt())
 
     try:
         print("Starting loop...")
