@@ -2,6 +2,7 @@
 
 """
 import asyncio
+import ipaddress
 import json
 import socket
 import struct
@@ -23,33 +24,49 @@ class NetworkMemory(BindableDict):
             del kwargs["name"]
         else:
             self.name = socket.gethostname()
-        # if not "name" in kwargs:
-        #     kwargs["name"] = socket.gethostname()
+
         super().__init__(**kwargs)
 
         # Data
         self.remote_addr = None  # type: (str, int)  # remote address is set in connect() function
+        self._transport = None  # type: asyncio.DatagramTransport
         self._timestamps = {}  # maps keys to timestamp of change
 
-    def connect(self, local_addr: (str, int), remote_addr: (str, int), multicast=False, loop=None):
+    def connect(self,
+                local_addr: (str, int) = None,
+                remote_addr: (str, int) = None,
+                loop:asyncio.BaseEventLoop=None):
         """
         Connects the NetworkMemory object to the network.  Will listen on local_addr and send
-        updates to remote_addr.  If local_addr is a multicast address, set the multicast argument to True.
+        updates to remote_addr.
         An asyncio.BaseEventLoop can be provided or else asyncio.get_event_loop() will be used.
+
+        If no local_addr is given, the multicast address ("225.0.0.1", 9999) will be used for local_addr.
+
+        if no remote_addr is given, local_addr will be used.
 
         This connect() method must be called when the loop is not yet running.
 
         :param local_addr:
         :param remote_addr:
-        :param multicast:
+        :param local_is_multicast:
         :param loop:
         :return:
         """
         loop = loop or asyncio.get_event_loop()
-        self.remote_addr = remote_addr
 
-        # Server
-        if multicast:
+        if local_addr is None:
+            local_addr = ("225.0.0.1", 9999)
+
+        if remote_addr is None:
+            self.remote_addr = local_addr
+        else:
+            self.remote_addr = remote_addr
+
+        local_is_multicast = ipaddress.ip_address(local_addr[0]).is_multicast
+
+        # How to make Python listen to multicast
+        if local_is_multicast:
             def _make_sock():
                 m_addr, port = local_addr
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -66,18 +83,17 @@ class NetworkMemory(BindableDict):
             listen = loop.create_datagram_endpoint(lambda: self, local_addr=local_addr)
 
         try:
-            self.transport, self.protocol = loop.run_until_complete(listen)
+            self._transport, _ = loop.run_until_complete(listen)
         except RuntimeError as re:
             if "This event loop is already running" in re.args[0]:
                 raise RuntimeError("{}.  Did you start the loop before you called connect()?".format(re), re)
             else:
                 raise re
 
-    def connect_on_new_thread(self, local_addr: (str, int), remote_addr: (str, int), local_is_multicast=False):
+    def connect_on_new_thread(self, local_addr: (str, int), remote_addr: (str, int)):
         """
         Connects the NetworkMemory object to the network.  Will listen on local_addr and send
-        updates to remote_addr.  If local_addr is a multicast address, set the local_is_multicast
-        argument to True.
+        updates to remote_addr.
 
         A new asyncio.BaseEventLoop will be created and run on a new thread to aid in applications
         where there are already other non-compatible event loops, such as tkinter.
@@ -89,14 +105,10 @@ class NetworkMemory(BindableDict):
         :return:
         """
         ioloop = asyncio.new_event_loop()
-        self.connect(local_addr=local_addr, remote_addr=remote_addr, multicast=local_is_multicast, loop=ioloop)
+        self.connect(local_addr=local_addr, remote_addr=remote_addr, loop=ioloop)
         t = threading.Thread(target=lambda: ioloop.run_forever())
         t.daemon = True
         t.start()
-
-    # def get(self, name: str, default=None):
-    #     """ Return the value associated with a key, or 'default' if not present. """
-    #     return super().get(str(name), default)
 
     def _notify_listeners(self):
 
@@ -108,38 +120,33 @@ class NetworkMemory(BindableDict):
                 data = {"update": changes, "timestamp": timestamp, "host": self.name}
                 json_data = json.dumps(data)
                 self.log.debug("Sending to network: {}".format(json_data))
-                self.transport.sendto(json_data.encode(), self.remote_addr)
+                self._transport.sendto(json_data.encode(), self.remote_addr)
         super()._notify_listeners()
 
-
-    # def setz(self, name: str, new_val, force_notify: bool = False, timestamp: float = None):
-    #     name = str(name)
-    #     timestamp = float(timestamp or time.time())
-    #     self._timestamps[name] = timestamp
-    #     old_val = self.get(name)
-    #
-    #     if force_notify or old_val != new_val:
-    #         data = {"name": name, "value": new_val, "timestamp": timestamp, "host": self.name}
-    #         json_data = json.dumps(data)
-    #         self.log.debug("Sending to network: {}".format(json_data))
-    #         self.transport.sendto(json_data.encode(), self.remote_addr)
-    #
-    #     super().set(name, new_val, force_notify=force_notify)
+    def close(self):
+        self.log.info("Connection closed")
+        self._transport.close()
 
     def connection_made(self, transport):
-        self.log.debug("Connection made {} on thread {}".format(transport, threading.get_ident()))
-        self.transport = transport
+        self.log.debug("Connection {} made on thread {}".format(transport, threading.get_ident()))
+        self._transport = transport
+
+    def connection_lost(self, exc):
+        self.log.debug("Connection {} lost (Error: {})".format(self._transport, exc))
+        self._transport = None
 
     def datagram_received(self, data, addr):
         self.log.debug("datagram_received from {}: {}".format(addr, data))
+
         msg = json.loads(data.decode())
         if "update" in msg:
             changes = msg["update"]
             host = str(msg.get("host"))
             timestamp = float(msg.get("timestamp"))
             updates = {}
+
             for key, old_val, new_val in changes:
-                if timestamp > self._timestamps.get(key,0):
+                if timestamp > self._timestamps.get(key, 0):
                     self.log.debug("Received fresh network data from {}: {} = {}".format(host, key, new_val))
                     updates[key] = new_val
                     self._timestamps[key] = timestamp
@@ -148,13 +155,5 @@ class NetworkMemory(BindableDict):
             self.log.debug("Updating network data from {}: {}".format(host, updates))
             self.update(updates)
 
-        # if "name" in msg:
-        #     key = str(msg.get("name"))
-        #     value = msg.get("value")
-        #     host = str(msg.get("host"))
-        #     timestamp = int(msg.get("timestamp"))
-        #     if timestamp > self._timestamps.get(key, 0):
-        #         self.log.debug("Updating with network data from {}: {} = {}".format(host, key, value))
-        #         self.set(key, value)
-        #     else:
-        #         self.log.debug("Received stale network data: {} = {}".format(key, value))
+    def error_received(self, exc):
+        self.log.error("An error was received by {}: {}".format(self, exc))

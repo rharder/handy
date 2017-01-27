@@ -24,8 +24,8 @@ def example_NetworkMemory():
     def when_mem2_changes(var: NetworkMemory, name, old_val, new_val):
         print("mem2 '{}' '{}' changed. Old: {}. New: {}.".format(var, name, old_val, new_val))
 
-    mem1.notify(when_mem1_changes)
-    mem2.notify(when_mem2_changes)
+    mem1.add_listener(when_mem1_changes)
+    mem2.add_listener(when_mem2_changes)
 
 
     mem1.connect(loop)

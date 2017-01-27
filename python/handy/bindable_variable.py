@@ -28,7 +28,7 @@ def demo_bindable_variable():
     # Basic manipulations
     print()
     v = Var(42, name="age")
-    v.notify(_bindable_var_changed)
+    v.add_listener(_bindable_var_changed)
     print("::Setting age to 23 ...")
     v.value = 23
     print("::Incrementing age with v.value += 1 ...")
@@ -39,14 +39,14 @@ def demo_bindable_variable():
     # new_value-only notifications
     print()
     v = Var("Title")
-    v.notify(print, value_only=True)
+    v.add_listener(print, value_only=True)
     print("::Notification can optionally have one argument, the new value ...")
     v.value = "New Title"
 
     # No argument notifications
     print()
     v = Var("Something")
-    v.notify(print, no_args=True)
+    v.add_listener(print, no_args=True)
     print("::Notification will be called with no arguments ...")
     v.value = "Else"
     print("::Blank line above? Value is now", v.value)
@@ -54,7 +54,7 @@ def demo_bindable_variable():
     # Value is itself mutable
     print()
     v = Var()
-    v.notify(print)
+    v.add_listener(print)
     v.value = ["cat", "dog", "elephant"]
     print("::No notification if list item is changed directly ...")
     v.value.append("lion")
@@ -76,16 +76,16 @@ def demo_bindable_variable():
     person_name = Var("Joe")
     person_age = Var(23)
     fv = FormattableVar("{} is {} years old", [person_name, person_age])
-    fv.notify(print, value_only=True)
+    fv.add_listener(print, value_only=True)
     person_age += 1
 
-def demo_bindable_dictionary():
 
+def demo_bindable_dictionary():
     def _bindable_dict_changed(d, key, old_val, new_val):
         print("Dictionary changed: key={}, old_val={}, new_val={}".format(key, old_val, new_val), flush=True)
 
     d = BindableDict()
-    d.notify(_bindable_dict_changed)
+    d.add_listener(_bindable_dict_changed)
 
     d.set("foo", "bar")
     d.set("cats", 4)
@@ -95,9 +95,8 @@ def demo_bindable_dictionary():
         print("before or after?", flush=True)
         d.set("cats", 5)
 
-    a = {"pencil":"yellow", "cup": "full"}
+    a = {"pencil": "yellow", "cup": "full"}
     d.update(a)
-
 
 
 class Var(object):
@@ -216,7 +215,7 @@ class Var(object):
         old_val = self.__value
         if old_val != new_val or force_notify:
             self.__value = new_val
-            self.__notify_listeners(old_val, new_val)
+            self._notify_listeners(old_val, new_val)
 
     @property
     def name(self) -> str:
@@ -226,7 +225,7 @@ class Var(object):
     def name(self, new_val: str):
         self.__name = new_val
 
-    def notify(self, listener, value_only: bool = False, no_args=False):
+    def add_listener(self, listener, value_only: bool = False, no_args=False):
         """
         Registers listener as a callable object (a function or lambda generally) that will be
         notified when the value of this variable changes.
@@ -245,7 +244,7 @@ class Var(object):
         if no_args:
             self.__no_args.append(listener)
 
-    def stop_notifying(self, listener):
+    def remove_listener(self, listener):
         """
         Removes listener from the list of callable objects that are notified when the value changes
 
@@ -258,7 +257,7 @@ class Var(object):
         if listener in self.__no_args:
             self.__no_args.remove(listener)
 
-    def stop_notifying_all(self):
+    def remove_all_listeners(self):
         """
         Removes all listeners that are registered to be notified when the value changes.
         """
@@ -279,9 +278,9 @@ class Var(object):
 
         In this case the listeners will be called with old_val and new_val being the same.
         """
-        self.__notify_listeners(self.value, self.value)
+        self._notify_listeners(self.value, self.value)
 
-    def __notify_listeners(self, old_val, new_val):
+    def _notify_listeners(self, old_val, new_val):
         """
         Internal method to notify the list of listeners.
 
@@ -478,7 +477,7 @@ class FormattableVar(Var):
         self.__vars = bound_vars
 
         for v in bound_vars:
-            v.notify(self.__var_changed)
+            v.add_listener(self.__var_changed)
 
         self.__update_format()
 
@@ -493,9 +492,6 @@ class FormattableVar(Var):
 
 
 class BindableDict(dict):
-
-    # __name_counter = 0
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -504,31 +500,9 @@ class BindableDict(dict):
         self._changes = []
         self._suspend_notifications = False
 
-    # def __init__2(self, name: str = None):
-    #     self.log = logging.getLogger(__name__)
-    #     self.__dict = {}
-    #
-    #     if name is None:
-    #         self.__name = "BindableDict_{}".format(BindableDict.__name_counter)
-    #         BindableDict.__name_counter += 1
-    #     else:
-    #         self.__name = name
-    #
-    #     self.__listeners = []
-    #     self.__changes = []
-    #     self.__suspend_notifications = False
-
-    # def __str__(self):
-    #     return "{}: {}".format(self.__class__.__name__, super().__str__())
-
-    # def get(self, key, default=None):
-    #     """ Return the value for a given key or None if no default is given """
-    #     return self.__dict.get(key, default)
     def __getitem__(self, key):
-        # val = dict.__getitem__(self, key)
         val = super().__getitem__(key)
         return val
-
 
     def __setitem__(self, key, new_val):
         self.set(key, new_val)
@@ -539,21 +513,21 @@ class BindableDict(dict):
         if old_val != new_val or force_notify:
             self._changes.append((key, old_val, new_val))
             self._notify_listeners()
-    #
-    # def set(self, key, new_val, force_notify=False):
-    #     """
-    #     Sets the value for a given key.
-    #
-    #     :param key: the key associated with the value
-    #     :param new_val: The new value for the variable
-    #     :param force_notify: Notify listeners even if the value did not actually change
-    #     """
-    #     old_val = self.__dict.get(key)
-    #     if old_val != new_val or force_notify:
-    #         self.__dict[key] = new_val
-    #         self.__changes.append([key, old_val, new_val])
-    #         self.__notify_listeners()
 
+    def trigger_notification(self, key):
+        """
+        Triggers notification to listeners for a certain key, regardless of
+        any change to the key.  The listeners will get their callback with
+        both old_val and new_val being the same.
+
+        Can be handy if the key's value is an object with internal changes,
+        such as an array or another dictionary.
+
+        :param key: the key to alert listeners to
+        """
+        val = self.get(key)
+        self._changes.append((key, val, val))
+        self._notify_listeners()
 
     def __repr__(self):
         dictrepr = super().__repr__()
@@ -564,16 +538,7 @@ class BindableDict(dict):
             for k, v in dict(*args, **kwargs).items():
                 self[k] = v
 
-    #
-    # @property
-    # def name(self) -> str:
-    #     return self.__name
-    #
-    # @name.setter
-    # def name(self, new_val: str):
-    #     self.__name = new_val
-
-    def notify(self, listener):#, value_only: bool = False, no_args=False):
+    def add_listener(self, listener):
         """
         Registers listener as a callable object (a function or lambda generally) that will be
         notified when the value of this variable changes.
@@ -588,7 +553,7 @@ class BindableDict(dict):
         """
         self.__listeners.append(listener)
 
-    def stop_notifying(self, listener):
+    def remove_listener(self, listener):
         """
         Removes listener from the list of callable objects that are notified when the value changes
 
@@ -597,7 +562,7 @@ class BindableDict(dict):
         if listener in self.__listeners:
             self.__listeners.remove(listener)
 
-    def stop_notifying_all(self):
+    def remove_all_listeners(self):
         """
         Removes all listeners that are registered to be notified when the value changes.
         """
@@ -625,8 +590,8 @@ class BindableDict(dict):
         self._suspend_notifications = False
         self._notify_listeners()
 
-class BindableDict2(object):
 
+class BindableDict2(object):
     __name_counter = 0
 
     def __init__(self, name: str = None):
@@ -672,7 +637,7 @@ class BindableDict2(object):
     def name(self, new_val: str):
         self.__name = new_val
 
-    def notify(self, listener):#, value_only: bool = False, no_args=False):
+    def notify(self, listener):  # , value_only: bool = False, no_args=False):
         """
         Registers listener as a callable object (a function or lambda generally) that will be
         notified when the value of this variable changes.
@@ -723,6 +688,7 @@ class BindableDict2(object):
         """ For use with Python's "with" construct. """
         self.__suspend_notifications = False
         self.__notify_listeners()
+
 
 if __name__ == "__main__":
     main()
