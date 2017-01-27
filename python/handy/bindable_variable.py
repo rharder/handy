@@ -4,9 +4,8 @@ Represents a variable that can bind listeners to changes in its state,
 similar to the tkinter.StringVar, IntVar, etc classes.
 """
 
-from typing import List
-
 import logging
+from typing import List
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -15,8 +14,8 @@ __license__ = "Public Domain"
 
 
 def main():
-    # demo_bindable_variable()
-    demo_bindable_dictionary()
+    demo_bindable_variable()
+    # demo_bindable_dictionary()
 
 
 def demo_bindable_variable():
@@ -78,6 +77,17 @@ def demo_bindable_variable():
     fv = FormattableVar("{} is {} years old", [person_name, person_age])
     fv.add_listener(print, value_only=True)
     person_age += 1
+
+    # Using tk
+    import tkinter as tk
+    root = tk.Tk()
+    root.title("Bindable Variable")
+    v = Var()
+    v.add_listener(print, value_only=True)
+    entry = tk.Entry(root, textvariable=v.tk_var())
+    entry.pack()
+    v.value = "intial"
+    tk.mainloop()
 
 
 def demo_bindable_dictionary():
@@ -216,6 +226,13 @@ class Var(object):
         if old_val != new_val or force_notify:
             self.__value = new_val
             self._notify_listeners(old_val, new_val)
+
+    def tk_var(self):
+        import tkinter as tk
+        tkvar = tk.Variable(name=self.name)
+        tkvar.trace("w", lambda _, __, ___, v=tkvar: self.set(tkvar.get()))
+        self.add_listener(lambda x: tkvar.set(x), value_only=True)
+        return tkvar
 
     @property
     def name(self) -> str:
@@ -590,105 +607,17 @@ class BindableDict(dict):
         self._suspend_notifications = False
         self._notify_listeners()
 
+    def tk_var(self, key):
+        import tkinter as tk
+        tkvar = tk.Variable(name="{}_{}".format(self.__class__.__name__, key))
+        tkvar.trace("w", lambda _, __, ___, v=tkvar: self.set(key, tkvar.get()))
 
-class BindableDict2(object):
-    __name_counter = 0
+        def _listener(bdict, changed_key, old_val, new_val):
+            if changed_key == key:
+                tkvar.set(new_val)
 
-    def __init__(self, name: str = None):
-        self.log = logging.getLogger(__name__)
-        self.__dict = {}
-
-        if name is None:
-            self.__name = "BindableDict_{}".format(BindableDict.__name_counter)
-            BindableDict.__name_counter += 1
-        else:
-            self.__name = name
-
-        self.__listeners = []
-        self.__changes = []
-        self.__suspend_notifications = False
-
-    def __str__(self):
-        return "{}: {}".format(self.__class__.__name__, self.__dict)
-
-    def get(self, key, default=None):
-        """ Return the value for a given key or None if no default is given """
-        return self.__dict.get(key, default)
-
-    def set(self, key, new_val, force_notify=False):
-        """
-        Sets the value for a given key.
-
-        :param key: the key associated with the value
-        :param new_val: The new value for the variable
-        :param force_notify: Notify listeners even if the value did not actually change
-        """
-        old_val = self.__dict.get(key)
-        if old_val != new_val or force_notify:
-            self.__dict[key] = new_val
-            self.__changes.append([key, old_val, new_val])
-            self.__notify_listeners()
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @name.setter
-    def name(self, new_val: str):
-        self.__name = new_val
-
-    def notify(self, listener):  # , value_only: bool = False, no_args=False):
-        """
-        Registers listener as a callable object (a function or lambda generally) that will be
-        notified when the value of this variable changes.
-
-        The options value_only and no_args are mutually exclusive.  If both are set
-        to True, then it is unspecified which form of notification will occur: one
-        argument or no arguments.
-
-        :param listener: the listener to notify
-        :param bool value_only: listener will be notified with only one argument, the new value
-        :param bool no_args: listener will be notified with no arguments
-        """
-        self.__listeners.append(listener)
-
-    def stop_notifying(self, listener):
-        """
-        Removes listener from the list of callable objects that are notified when the value changes
-
-        :param listener: the listener to remove
-        """
-        if listener in self.__listeners:
-            self.__listeners.remove(listener)
-
-    def stop_notifying_all(self):
-        """
-        Removes all listeners that are registered to be notified when the value changes.
-        """
-        self.__listeners.clear()
-
-    def __notify_listeners(self):
-        """
-        Internal method to notify the list of listeners.
-        """
-
-        if not self.__suspend_notifications:
-            changes = self.__changes.copy()
-            self.__changes.clear()
-            for listener in self.__listeners:
-                for key, old_val, new_val in changes:
-                    listener(self, key, old_val, new_val)
-
-    def __enter__(self):
-        """ For use with Python's "with" construct. """
-        self.__suspend_notifications = True
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """ For use with Python's "with" construct. """
-        self.__suspend_notifications = False
-        self.__notify_listeners()
-
+        self.add_listener(_listener)
+        return tkvar
 
 if __name__ == "__main__":
     main()

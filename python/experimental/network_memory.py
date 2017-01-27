@@ -35,7 +35,7 @@ class NetworkMemory(BindableDict):
     def connect(self,
                 local_addr: (str, int) = None,
                 remote_addr: (str, int) = None,
-                loop:asyncio.BaseEventLoop=None):
+                loop: asyncio.BaseEventLoop = None):
         """
         Connects the NetworkMemory object to the network.  Will listen on local_addr and send
         updates to remote_addr.

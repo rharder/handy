@@ -47,6 +47,11 @@ class NetMemApp():
         txt_val.grid(row=1, column=1, sticky=tk.W + tk.E)
         txt_val.bind('<Return>', lambda x: self.update_button_clicked())
 
+        lbl_score = tk.Label(self.window, text="Bound to 'score':")
+        lbl_score.grid(row=4, column=0, sticky=tk.E)
+        txt_score = tk.Entry(self.window, textvariable=self.netmem.tk_var("score"))
+        txt_score.grid(row=4, column=1, sticky=tk.W + tk.E)
+
         btn_update = tk.Button(self.window, text="Update Memory", command=self.update_button_clicked)
         btn_update.grid(row=2, column=0, columnspan=2)
 
@@ -71,6 +76,7 @@ class NetMemApp():
     def memory_updated(self, var, key, old_val, new_val):
         print("memory_updated", var, key, old_val, new_val)
         self.data_var.set(str(self.netmem))
+
 
 
 def main():

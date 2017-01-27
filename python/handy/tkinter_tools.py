@@ -5,6 +5,8 @@ A collection of functions and classes to help with tkinter.
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import scrolledtext
+
+from handy.bindable_variable import Var
 from .prefs import Prefs
 
 __author__ = "Robert Harder"
