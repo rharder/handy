@@ -3,7 +3,7 @@ import tkinter as tk
 
 import logging
 
-from experimental import NetworkMemory
+from handy.network_memory import NetworkMemory
 from handy.tkinter_tools import BindableTextArea
 
 
@@ -82,9 +82,9 @@ class NetMemApp():
 def main():
     tk1 = tk.Tk()
     # tk2 = tk.Toplevel()
-    program1 = NetMemApp(tk1)#,
-    #                      local_addr=("225.0.0.1", 9991),
-    #                      remote_addr=("225.0.0.2", 9992))
+    program1 = NetMemApp(tk1,
+                         local_addr=("225.0.0.1", 9991),
+                         remote_addr=("225.0.0.2", 9992))
     # program2 = NetMemApp(tk2,
     #                      local_addr=("225.0.0.2", 9992),
     #                      remote_addr=("225.0.0.1", 9991))

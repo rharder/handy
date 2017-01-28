@@ -531,7 +531,7 @@ class BindableDict(dict):
             self._changes.append((key, old_val, new_val))
             self._notify_listeners()
 
-    def trigger_notification(self, key):
+    def mark_changed(self, key):
         """
         Triggers notification to listeners for a certain key, regardless of
         any change to the key.  The listeners will get their callback with
@@ -549,6 +549,9 @@ class BindableDict(dict):
     def __repr__(self):
         dictrepr = super().__repr__()
         return "{}({})".format(type(self).__name__, dictrepr)
+
+    def __str__(self):
+        return super().__repr__()
 
     def update(self, *args, **kwargs):
         with self:
