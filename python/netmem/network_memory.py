@@ -9,12 +9,83 @@ import struct
 import threading
 import time
 
+import logging
+
 from handy.bindable_variable import BindableDict
+# from .connector import Connector
+
+from .connector import Connector
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "20 Jan 2017"
 __license__ = "Public Domain"
+
+
+class NetworkMemoryC(BindableDict):
+    def __init__(self, **kwargs):
+        if "name" in kwargs:
+            self.name = kwargs["name"]
+            del kwargs["name"]
+        else:
+            self.name = socket.gethostname()
+
+        super().__init__(**kwargs)
+
+        # Data
+        self._timestamps = {}  # maps keys to timestamp of change
+        self._connectors = []  # type: [Connector]
+
+    def connect(self, connector):
+        connector.connect(self)
+
+    def message_received(self, connector: Connector, msg: dict):
+        print("message_received", connector, msg)
+
+        if "update" in msg:
+            changes = msg["update"]
+            host = str(msg.get("host"))
+            timestamp = float(msg.get("timestamp"))
+            updates = {}
+
+            for key, old_val, new_val in changes:
+                if timestamp > self._timestamps.get(key, 0):
+                    self.log.debug("Received fresh network data from {}: {} = {}".format(host, key, new_val))
+                    updates[key] = new_val
+                    self._timestamps[key] = timestamp
+                else:
+                    self.log.debug("Received stale network data from {}: {} = {}".format(host, key, new_val))
+            self.log.debug("Updating network data from {}: {}".format(host, updates))
+            self.update(updates)
+
+    def connector_connected(self, connector):
+        print("connector_connected", connector)
+        self._connectors.append(connector)
+
+    def connector_closed(self, connector, exc=None):
+        print("connector_closed", connector, exc)
+        self._connectors.remove(connector)
+
+    def connector_error(self, connector, exc=None):
+        print("connector_error", connector, exc)
+
+    def _notify_listeners(self):
+
+        if not self._suspend_notifications:
+            self.log.debug("_notify_listeners")
+            changes = self._changes.copy()
+            timestamp = time.time()
+            if len(changes) > 0:
+                data = {"update": changes, "timestamp": timestamp, "host": self.name}
+                for connector in self._connectors.copy():
+                    connector.send_message(data)
+        super()._notify_listeners()
+
+    def close(self):
+        # self.log.info("Connection closed")
+        # self._transport.close()
+        for connector in self._connectors.copy():
+            connector.close()
 
 
 class NetworkMemory(BindableDict):

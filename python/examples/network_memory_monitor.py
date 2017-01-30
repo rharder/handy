@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 import asyncio
-import logging
 
 import sys
 
 sys.path.append("..")
-from handy.network_memory import NetworkMemory
+from netmem.network_memory import NetworkMemory
 
 # logging.basicConfig(level=logging.DEBUG)
 # logging.getLogger(__name__).setLevel(logging.DEBUG)

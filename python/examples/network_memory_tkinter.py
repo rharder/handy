@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
+import logging
 import tkinter as tk
 
-import logging
-
-from handy.network_memory import NetworkMemory
 from handy.tkinter_tools import BindableTextArea
+from netmem.network_memory import NetworkMemory
 
 
 # logging.basicConfig(level=logging.ERROR)
