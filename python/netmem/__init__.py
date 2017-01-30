@@ -1,6 +1,7 @@
-from .network_memory import NetworkMemoryC
+from .network_memory import NetworkMemory
 from .connector import Connector
 from .udp_connector import UdpConnector
+from .websocket_connector import WsServerConnector, WsClientConnector
 
 # from . import network_memory
 # from . import connector

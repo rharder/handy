@@ -24,8 +24,8 @@ class UdpConnector(Connector):
         return "{}(local_addr={}, remote_addr={})".format(
             self.__class__.__name__, self.local_addr, self.remote_addr)
 
-    def connect(self, net_mem):
-        super().connect(net_mem)
+    def connect(self, listener, loop=None):
+        super().connect(listener, loop)
 
         if self.new_thread:
             self._connect_on_new_thread(local_addr=self.local_addr, remote_addr=self.remote_addr)
@@ -93,8 +93,8 @@ class UdpConnector(Connector):
         t.daemon = True
         t.start()
 
-    def send_message(self, data: dict):
-        json_data = json.dumps(data)
+    def send_message(self, msg: dict):
+        json_data = json.dumps(msg)
         self.log.debug("Sending to network: {}".format(json_data))
         self._transport.sendto(json_data.encode(), self.remote_addr)
 
@@ -102,35 +102,24 @@ class UdpConnector(Connector):
     def connection_made(self, transport):
         self.log.debug("Connection {} made on thread {}".format(transport, threading.get_ident()))
         self._transport = transport
-        self.net_mem.connector_connected(self)
+        # self.net_mem.connector_connected(self)
+        self.listener.connection_made(self)
 
     def connection_lost(self, exc):
         self.log.debug("Connection {} lost (Error: {})".format(self._transport, exc))
         self._transport.close()
         self._transport = None
-        self.net_mem.connector_closed(self)
+        # self.net_mem.connector_closed(self)
+        self.listener.connection_lost(self, exc=exc)
 
     def datagram_received(self, data, addr):
         self.log.debug("datagram_received from {}: {}".format(addr, data))
 
         msg = json.loads(data.decode())
-        self.net_mem.message_received(self, msg)
-        # if "update" in msg:
-        #     changes = msg["update"]
-        #     host = str(msg.get("host"))
-        #     timestamp = float(msg.get("timestamp"))
-        #     updates = {}
-        #
-        #     for key, old_val, new_val in changes:
-        #         if timestamp > self._timestamps.get(key, 0):
-        #             self.log.debug("Received fresh network data from {}: {} = {}".format(host, key, new_val))
-        #             updates[key] = new_val
-        #             self._timestamps[key] = timestamp
-        #         else:
-        #             self.log.debug("Received stale network data from {}: {} = {}".format(host, key, new_val))
-        #     self.log.debug("Updating network data from {}: {}".format(host, updates))
-        #     self.update(updates)
+        # self.message_received(self, msg)
+        self.listener.message_received(self, msg)
 
     def error_received(self, exc):
         self.log.error("An error was received by {}: {}".format(self, exc))
-        self.net_mem.connector_error(self, exc)
+        # self.net_mem.connector_error(self, exc)
+        self.listener.connection_error(self, exc=exc)

@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
-import logging
+import sys
 import tkinter as tk
 
+import logging
+
+sys.path.append("..")
 from handy.tkinter_tools import BindableTextArea
 from netmem import UdpConnector
+from netmem import WsServerConnector, WsClientConnector
 from netmem.network_memory import NetworkMemory
 
 
 # logging.basicConfig(level=logging.ERROR)
 logging.basicConfig(level=logging.DEBUG)
+
+
 # logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 
 
 class NetMemApp():
-    def __init__(self, root, local_addr=None, remote_addr=None):
+    def __init__(self, root, connector):
         self.window = root
-        root.title("NetMem {}".format(local_addr))
+        root.title("NetMem {}".format(str(connector)))
 
         # Data
         self.netmem = NetworkMemory()
@@ -29,12 +35,10 @@ class NetMemApp():
 
         # Connections
         self.netmem.add_listener(self.memory_updated)
-        self.netmem.connect(UdpConnector(local_addr=local_addr,
-                                                       remote_addr=remote_addr,
-                                                       new_thread=True))
+        self.netmem.connect_on_new_thread(connector)
+
         self.key_var.set("pet")
         self.val_var.set("cat")
-
 
     def create_widgets(self):
         lbl_key = tk.Label(self.window, text="Key:")
@@ -49,47 +53,37 @@ class NetMemApp():
         txt_val.grid(row=1, column=1, sticky=tk.W + tk.E)
         txt_val.bind('<Return>', lambda x: self.update_button_clicked())
 
-        lbl_score = tk.Label(self.window, text="Bound to 'score':")
-        lbl_score.grid(row=4, column=0, sticky=tk.E)
+        lbl_score = tk.Label(self.window, text="Also demonstrate, bound to key 'score':")
+        lbl_score.grid(row=2, column=0, sticky=tk.E)
         txt_score = tk.Entry(self.window, textvariable=self.netmem.tk_var("score"))
-        txt_score.grid(row=4, column=1, sticky=tk.W + tk.E)
+        txt_score.grid(row=2, column=1, sticky=tk.W + tk.E)
 
         btn_update = tk.Button(self.window, text="Update Memory", command=self.update_button_clicked)
-        btn_update.grid(row=2, column=0, columnspan=2)
+        btn_update.grid(row=3, column=0, columnspan=2)
 
         txt_data = BindableTextArea(self.window, textvariable=self.data_var, width=30, height=5)
-        txt_data.grid(row=3, column=0, columnspan=2)
+        txt_data.grid(row=4, column=0, columnspan=2)
 
     def update_button_clicked(self):
-        print("update_button_clicked")
         key = self.key_var.get()
         val = self.val_var.get()
         with self.netmem:
             self.netmem.set(key, val)
             if key == "exit":
                 self.netmem.close()
-            # self.netmem["foo"] = "bar"
-            # self.netmem["answer"] = 42
-            # if "arr" not in self.netmem:
-            #     self.netmem["arr"] = []
-            # self.netmem["arr"].append(len(self.netmem["arr"]))
-            # self.netmem.trigger_notification("arr")
 
     def memory_updated(self, var, key, old_val, new_val):
-        print("memory_updated", var, key, old_val, new_val)
         self.data_var.set(str(self.netmem))
-
 
 
 def main():
     tk1 = tk.Tk()
-    # tk2 = tk.Toplevel()
-    program1 = NetMemApp(tk1,
-                         local_addr=("225.0.0.1", 9991),
-                         remote_addr=("225.0.0.2", 9992))
-    # program2 = NetMemApp(tk2,
-    #                      local_addr=("225.0.0.2", 9992),
-    #                      remote_addr=("225.0.0.1", 9991))
+    conn1 = WsServerConnector(port=9998)
+    program1 = NetMemApp(tk1, conn1)
+
+    tk2 = tk.Toplevel()
+    conn2 = WsClientConnector(url=conn1.url)
+    program2 = NetMemApp(tk2, conn2)
 
     tk1.mainloop()
 

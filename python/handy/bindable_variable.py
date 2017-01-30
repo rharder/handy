@@ -181,7 +181,7 @@ class Var(object):
     __name_counter = 0
 
     def __init__(self, value=None, name: str = None):
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__value = value
 
         if name is None:
@@ -489,7 +489,7 @@ class FormattableVar(Var):
     """
 
     def __init__(self, str_format: str, bound_vars: List[Var], name=None):
-        Var.__init__(self, name=name)
+        super().__init__(self, name=name)
         self.__format = str_format
         self.__vars = bound_vars
 
@@ -512,7 +512,7 @@ class BindableDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__listeners = []
         self._changes = []
         self._suspend_notifications = False
