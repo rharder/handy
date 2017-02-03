@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 An example of how to use asyncio event loops and tkinter event loops in the same program.
+
+Discussed here: http://blog.iharder.net/2017/02/03/python-asyncio-and-tkinter-together/
+UDP Version: http://pastebin.com/PeHHRR4E
+TCP Version: http://pastebin.com/ZGeDULR9
 """
 import asyncio
 import threading
