@@ -422,6 +422,7 @@ class BindableDict(dict):
 
         self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__listeners = []
+        self.__listeners_by_key = {}
         self._changes = []
         self._timestamps = {}
         self._suspend_notifications = False
@@ -479,7 +480,7 @@ class BindableDict(dict):
             for k, v in dict(*args, **kwargs).items():
                 self[k] = v
 
-    def add_listener(self, listener):
+    def add_listener(self, listener, key=None):
         """
         Registers listener as a callable object (a function or lambda generally) that will be
         notified when the value of this variable changes.
@@ -494,25 +495,36 @@ class BindableDict(dict):
                 ...
 
         :param listener: the listener to notify
-        :param bool value_only: listener will be notified with only one argument, the new value
-        :param bool no_args: listener will be notified with no arguments
+        :param key: only send notifications for changes to this key
         """
-        self.__listeners.append(listener)
+        if key is None:
+            self.__listeners.append(listener)
+        else:
+            if key not in self.__listeners_by_key:
+                self.__listeners_by_key[key] = []
+            self.__listeners_by_key[key].append(listener)
 
-    def remove_listener(self, listener):
+
+    def remove_listener(self, listener, key=None):
         """
         Removes listener from the list of callable objects that are notified when the value changes
 
         :param listener: the listener to remove
         """
-        if listener in self.__listeners:
-            self.__listeners.remove(listener)
+        if key is None:
+            if listener in self.__listeners:
+                self.__listeners.remove(listener)
+        else:
+            key_listeners = self.__listeners_by_key.get(key, [])
+            if listener in key_listeners:
+                key_listeners.remove(listener)
 
     def remove_all_listeners(self):
         """
         Removes all listeners that are registered to be notified when the value changes.
         """
         self.__listeners.clear()
+        self.__listeners_by_key.clear()
 
     def _notify_listeners(self):
         """
@@ -522,15 +534,19 @@ class BindableDict(dict):
         if not self._suspend_notifications:
             changes = self._changes.copy()
             self._changes.clear()
-            for listener in self.__listeners:
-                # for key, old_val, new_val in changes:
-                for change in changes:
-                    if change["action"] == "update":
-                        key = change["key"]
-                        old_val = change["old_val"]
-                        new_val = change["new_val"]
-                        timestamp = change["timestamp"]
+            for change in changes:
+                if change["action"] == "update":
+                    key = change["key"]
+                    old_val = change["old_val"]
+                    new_val = change["new_val"]
+                    # timestamp = change["timestamp"]
+
+                    # Notify "all" and "by key" listeners
+                    for listener in self.__listeners.copy():
                         listener(self, key, old_val, new_val)
+                    for key_listener in self.__listeners_by_key.get(key, []).copy():
+                        key_listener(self, key, old_val, new_val)
+
 
     def __enter__(self):
         """ For use with Python's "with" construct. """
@@ -548,10 +564,10 @@ class BindableDict(dict):
         tkvar = tk.Variable()
         tkvar.trace("w", lambda _, __, ___, v=tkvar: self.set(key, tkvar.get()))
 
-        def _listener(bdict, changed_key, old_val, new_val):
-            if changed_key == key:
-                tkvar.set(new_val)
+        # def _listener(bdict, changed_key, old_val, new_val):
+        #     if changed_key == key:
+        #         tkvar.set(new_val)
 
-        self.add_listener(_listener)
+        self.add_listener(lambda _, __, ___, new_val: tkvar.set(new_val), key)
         return tkvar
 
