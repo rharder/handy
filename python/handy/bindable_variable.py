@@ -2,111 +2,19 @@
 """
 Represents a variable that can bind listeners to changes in its state,
 similar to the tkinter.StringVar, IntVar, etc classes.
+
+Source: http://github.com/rharder/handy
 """
 
 import logging
 from typing import List
 
+import time
+
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
 __license__ = "Public Domain"
-
-
-def main():
-    demo_bindable_variable()
-    # demo_bindable_dictionary()
-
-
-def demo_bindable_variable():
-    """ Demonstrate handy.Var and handy.FormattableVar """
-
-    def _bindable_var_changed(var, old_val, new_val):
-        print("Variable changed: name={}, old_val={}, new_val={}".format(var.name, old_val, new_val))
-
-    # Basic manipulations
-    print()
-    v = Var(42, name="age")
-    v.add_listener(_bindable_var_changed)
-    print("::Setting age to 23 ...")
-    v.value = 23
-    print("::Incrementing age with v.value += 1 ...")
-    v.value += 1
-    print("::Incrementing age with v += 1 ...")
-    v += 1
-
-    # new_value-only notifications
-    print()
-    v = Var("Title")
-    v.add_listener(print, value_only=True)
-    print("::Notification can optionally have one argument, the new value ...")
-    v.value = "New Title"
-
-    # No argument notifications
-    print()
-    v = Var("Something")
-    v.add_listener(print, no_args=True)
-    print("::Notification will be called with no arguments ...")
-    v.value = "Else"
-    print("::Blank line above? Value is now", v.value)
-
-    # Value is itself mutable
-    print()
-    v = Var()
-    v.add_listener(print)
-    v.value = ["cat", "dog", "elephant"]
-    print("::No notification if list item is changed directly ...")
-    v.value.append("lion")
-    print("::List is now", v.value)
-    print("::Notifications happen at end of 'with' construct ...")
-    print("::Note that it is not possible to separate old value and new value.")
-    with v:
-        v.value[2] = "mouse"
-        v.value[3] = "gerbil"
-        v.value.append("fish")
-    print("::An ugly way to abort notifications according to some test ...")
-    with v as unchanged:
-        if "some truth test":
-            raise unchanged
-        else:
-            v.value.append("chimpanze")
-
-    # Using the FormattableVar
-    person_name = Var("Joe")
-    person_age = Var(23)
-    fv = FormattableVar("{} is {} years old", [person_name, person_age])
-    fv.add_listener(print, value_only=True)
-    person_age += 1
-
-    # Using tk
-    import tkinter as tk
-    root = tk.Tk()
-    root.title("Bindable Variable")
-    v = Var()
-    v.add_listener(print, value_only=True)
-    entry = tk.Entry(root, textvariable=v.tk_var())
-    entry.pack()
-    v.value = "intial"
-    tk.mainloop()
-
-
-def demo_bindable_dictionary():
-    def _bindable_dict_changed(d, key, old_val, new_val):
-        print("Dictionary changed: key={}, old_val={}, new_val={}".format(key, old_val, new_val), flush=True)
-
-    d = BindableDict()
-    d.add_listener(_bindable_dict_changed)
-
-    d.set("foo", "bar")
-    d.set("cats", 4)
-
-    with d:
-        d.set("dogs", 0)
-        print("before or after?", flush=True)
-        d.set("cats", 5)
-
-    a = {"pencil": "yellow", "cup": "full"}
-    d.update(a)
 
 
 class Var(object):
@@ -229,7 +137,7 @@ class Var(object):
 
     def tk_var(self):
         import tkinter as tk
-        tkvar = tk.Variable(name=self.name)
+        tkvar = tk.Variable()
         tkvar.trace("w", lambda _, __, ___, v=tkvar: self.set(tkvar.get()))
         self.add_listener(lambda x: tkvar.set(x), value_only=True)
         return tkvar
@@ -515,6 +423,7 @@ class BindableDict(dict):
         self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__listeners = []
         self._changes = []
+        self._timestamps = {}
         self._suspend_notifications = False
 
     def __getitem__(self, key):
@@ -524,14 +433,24 @@ class BindableDict(dict):
     def __setitem__(self, key, new_val):
         self.set(key, new_val)
 
-    def set(self, key, new_val, force_notify=False):
+    def set(self, key, new_val, force_notify=False, timestamp=None):
         old_val = self.get(key)
-        super().__setitem__(key, new_val)
-        if old_val != new_val or force_notify:
-            self._changes.append((key, old_val, new_val))
-            self._notify_listeners()
+        old_timestamp = self._timestamps.get(key, 0)
+        now = time.time()
 
-    def mark_changed(self, key):
+        # Only make change if timestamp is newer
+        if timestamp is None or now > old_timestamp:
+            self._timestamps[key] = now
+            super().__setitem__(key, new_val)
+
+            # Only make notification if value changed
+            if old_val != new_val or force_notify:
+                # self._changes.append((key, old_val, new_val))
+                self._changes.append({"key": key, "action": "update", "old_val": old_val,
+                                      "new_val": new_val, "timestamp": now})
+                self._notify_listeners()
+
+    def mark_as_changed(self, key, timestamp=None):
         """
         Triggers notification to listeners for a certain key, regardless of
         any change to the key.  The listeners will get their callback with
@@ -543,7 +462,9 @@ class BindableDict(dict):
         :param key: the key to alert listeners to
         """
         val = self.get(key)
-        self._changes.append((key, val, val))
+        timestamp = timestamp or time.time()
+        self._changes.append({"key": key, "action": "update", "old_val": None,
+                              "new_val": val, "timestamp": timestamp})
         self._notify_listeners()
 
     def __repr__(self):
@@ -566,6 +487,11 @@ class BindableDict(dict):
         The options value_only and no_args are mutually exclusive.  If both are set
         to True, then it is unspecified which form of notification will occur: one
         argument or no arguments.
+
+        The listener will be called with four arguments and should have a signature like this:
+
+            def memory_changed(netmem_dict, key, old_val, new_val):
+                ...
 
         :param listener: the listener to notify
         :param bool value_only: listener will be notified with only one argument, the new value
@@ -597,8 +523,14 @@ class BindableDict(dict):
             changes = self._changes.copy()
             self._changes.clear()
             for listener in self.__listeners:
-                for key, old_val, new_val in changes:
-                    listener(self, key, old_val, new_val)
+                # for key, old_val, new_val in changes:
+                for change in changes:
+                    if change["action"] == "update":
+                        key = change["key"]
+                        old_val = change["old_val"]
+                        new_val = change["new_val"]
+                        timestamp = change["timestamp"]
+                        listener(self, key, old_val, new_val)
 
     def __enter__(self):
         """ For use with Python's "with" construct. """
@@ -611,8 +543,9 @@ class BindableDict(dict):
         self._notify_listeners()
 
     def tk_var(self, key):
+        """ Returns a tk.Var object that is two-way bound to a particular key in this dictionary. """
         import tkinter as tk
-        tkvar = tk.Variable(name="{}_{}".format(self.__class__.__name__, key))
+        tkvar = tk.Variable()
         tkvar.trace("w", lambda _, __, ___, v=tkvar: self.set(key, tkvar.get()))
 
         def _listener(bdict, changed_key, old_val, new_val):
@@ -622,5 +555,3 @@ class BindableDict(dict):
         self.add_listener(_listener)
         return tkvar
 
-if __name__ == "__main__":
-    main()

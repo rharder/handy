@@ -6,7 +6,7 @@ import os
 import shelve  # For Prefs class
 import sys
 
-import appdirs  # Requires pip install appdirs
+import appdirs  # pip install appdirs
 
 
 class Prefs(object):
