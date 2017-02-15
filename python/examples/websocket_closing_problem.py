@@ -1,3 +1,6 @@
+"""
+Problem solved in aiohttp v1.3.0.  I was on 1.2.0.
+"""
 import asyncio
 import aiohttp
 
