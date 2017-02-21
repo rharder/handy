@@ -5,10 +5,6 @@ Easily subclassed websocket server.
 For example usage, see examples folder (also here: http://pastebin.com/xDSACmdV)
 """
 import asyncio
-import datetime
-import random
-import time
-import webbrowser
 
 import aiohttp
 from aiohttp import web
@@ -64,7 +60,3 @@ class WsServer:
     def broadcast_message(self, msg: dict):
         for ws in self.app["websockets"]:  # type: web.WebSocketResponse
             ws.send_json(msg)
-
-
-if __name__ == "__main__":
-    main()
