@@ -63,7 +63,7 @@ def main():
     loop.run_forever()
 
 
-class MyServer:
+class WsServer:
     def __init__(self, port):
         self.port = port  # type: int
         self.loop = None  # type: asyncio.AbstractEventLoop
@@ -111,7 +111,7 @@ class MyServer:
             ws.send_json(msg)
 
 
-class CapitalizeEchoServer(MyServer):
+class CapitalizeEchoServer(WsServer):
     """ Echoes back to client whatever they sent, but capitalized. """
 
     async def do_websocket(self, ws: web.WebSocketResponse):
@@ -120,7 +120,7 @@ class CapitalizeEchoServer(MyServer):
             ws.send_str(cap)
 
 
-class RandomQuoteServer(MyServer):
+class RandomQuoteServer(WsServer):
     """ Sends a random quote to the client every so many seconds. """
     QUOTES = ["Wherever you go, there you are.",
               "80% of all statistics are made up.",
@@ -142,7 +142,7 @@ class RandomQuoteServer(MyServer):
         await super().do_websocket(ws)  # leave client connected here indefinitely
 
 
-class TimeOfDayServer(MyServer):
+class TimeOfDayServer(WsServer):
     """ Sends a message to all clients simultaneously about time of day. """
 
     async def start(self):
