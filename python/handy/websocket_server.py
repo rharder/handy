@@ -26,12 +26,14 @@ class WsServer(object):
         :param route: The route at which to listen
         """
         super().__init__()
+        self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
+        # Passed parameters
         self.port = port
         self.route = route
 
-        self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-
+        # Internal use
+        self.websockets = []  # type: [web.WebSocketResponse]
         self.loop = None  # type: asyncio.AbstractEventLoop
         self.app = None  # type: web.Application
         self.srv = None  # type: asyncio.base_events.Server
@@ -55,7 +57,6 @@ class WsServer(object):
         self.loop = asyncio.get_event_loop()
 
         self.app = web.Application()
-        self.app["websockets"] = []  # type: [web.WebSocketResponse]
         self.app.router.add_get(self.route, self.websocket_handler)
         await self.app.startup()
 
@@ -70,12 +71,13 @@ class WsServer(object):
         """ Closes all connections to websocket clients and then shuts down the server. """
         self.srv.close()
         await self.srv.wait_closed()
-
-        for ws in self.app["websockets"].copy():  # type: web.WebSocketResponse
-            await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
-
+        await self.close_websockets()
         await self.app.shutdown()
         await self.app.cleanup()
+
+    async def close_websockets(self):
+        for ws in self.websockets.copy():  # type: web.WebSocketResponse
+            await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
 
     async def websocket_handler(self, request: aiohttp.Request):
         """
@@ -88,12 +90,12 @@ class WsServer(object):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        self.app["websockets"].append(ws)
+        self.websockets.append(ws)
         try:
             await self.on_websocket(ws)
         finally:
-            if ws in self.app["websockets"]:
-                self.app["websockets"].remove(ws)
+            if ws in self.websockets:
+                self.websockets.remove(ws)
 
         return ws
 
@@ -112,15 +114,15 @@ class WsServer(object):
 
     def broadcast_json(self, msg):
         """ Converts msg to json and broadcasts the json data to all connected clients. """
-        for ws in self.app["websockets"].copy():  # type: web.WebSocketResponse
+        for ws in self.websockets.copy():  # type: web.WebSocketResponse
             ws.send_json(msg)
 
     def broadcast_text(self, msg: str):
         """ Broadcasts a string to all connected clients. """
-        for ws in self.app["websockets"].copy():  # type: web.WebSocketResponse
+        for ws in self.websockets.copy():  # type: web.WebSocketResponse
             ws.send_str(msg)
 
     def broadcast_bytes(self, msg: bytes):
         """ Broadcasts bytes to all connected clients. """
-        for ws in self.app["websockets"].copy():  # type: web.WebSocketResponse
+        for ws in self.websockets.copy():  # type: web.WebSocketResponse
             ws.send_bytes(msg)
