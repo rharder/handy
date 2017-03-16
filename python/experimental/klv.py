@@ -1,5 +1,6 @@
 import io
 import sys
+import re
 from pprint import pprint
 from struct import unpack
 
@@ -17,8 +18,32 @@ KLV_EXAMPLE_1 = """
 29 18 04 14 BC 08 2B 19  02 34 F3 41 01 02 01 02
 C8 4C
 """  # http://impleotv.com/products/sdks/klvlibsdk/
-KLV_EXAMPLE_1_arr = [int(h, base=16) for h in KLV_EXAMPLE_1.split()]
-KLV_EXAMPLE_1_as_bytes = bytes(KLV_EXAMPLE_1_arr)
+KLV_EXAMPLE_1_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_1.split()])
+
+KLV_EXAMPLE_ICING_DETECTED = """
+06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
+10
+02 08 00 04 60 50 58 4E 01 80
+22 00
+05 02 71 C2
+"""  # 22 00 is "Icing Detected" with a length of zero (as it should be)
+KLV_EXAMPLE_ICING_DETECTED_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_ICING_DETECTED.split()])
+
+KLV_EXAMPLE_TAG_6_OUT_OF_RANGE = """
+06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
+10
+02 08 00 04 60 50 58 4E 01 80
+06 02 80 00
+"""
+KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_6_OUT_OF_RANGE.split()])
+
+KLV_EXAMPLE_TAG_47_FLAGS = """
+06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
+10
+02 08 00 04 60 50 58 4E 01 80
+2F 01 15
+"""
+KLV_EXAMPLE_TAG_47_FLAGS_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_47_FLAGS.split()])
 
 # Permissible Length Encodings
 LENGTH_1_BYTE = 1  # 1 byte
@@ -36,7 +61,35 @@ KEY_LENGTH_BER_OID = "BER-OID"  # Variable number of bytes
 KEY_VALID_ENCODINGS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_16, KEY_LENGTH_BER_OID)
 KEY_FIXED_LENGTHS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_16)
 KEY_LENGTHS_AS_INTS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_BER_OID)
+BIG_ENDIAN = 'big'
 
+# Identifying int formats
+INT_FORMAT_REGEX_PATTERN = "^(u?)int([0-9]+)$"
+INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
+
+
+def from_format(data: bytes, format: str):
+    # Integer
+    m = INT_FORMAT_REGEX.search(format)
+    if m is not None:
+        signed = m.group(1) != "u"
+        # bits = int(m.group(2))
+        return int.from_bytes(data, byteorder=BIG_ENDIAN, signed=signed)
+
+    # Strings
+    elif format in ("ISO 646", "ascii"):
+        return data.decode("ascii")
+
+
+# samples = ["{}int{}".format(a,x) for a in ('u','') for x in (8,16,32,64)]
+# samples += ['xint8', 'int9', 'uint9']
+# print(samples)
+#
+# for spec in samples:
+#     print(spec)
+#     m = re.search(INT_FORMAT_REGEX, spec)
+#     print(m, m.group(0), m.group(1), m.group(2))
+# sys.exit(2)
 
 def parse(source, key_size, length_encoding):
     """
@@ -153,33 +206,43 @@ def parse_into_dict(source, payload_defs_dictionary):
 
         # Name of Field
         fname = field_defs.get(fkey, {}).get("name")
-        if fname:
+        if fname is not None:
             field["name"] = fname
 
         # Verify size of payload
         expected_size = field_defs.get(fkey, {}).get("size")
         if expected_size is not None and len(fval) != expected_size:
-            print("For key={}, expected field of size {} but received field of size {}. Field: {}"
-                  .format(fkey, expected_size, len(fval), fval), file=sys.stderr)
+            msg = "Error: For key={}, expected field of size {} but received field of size {}. Field: {}" \
+                .format(fkey, expected_size, len(fval), fval)
+            print(msg, file=sys.stderr)
+            field["error"] = msg
 
         # Else we have the right sized field
         else:
+
             # Now, how do we process the field
             eval_technique = field_defs.get(fkey, {}).get("eval")
-            if eval_technique:
+            if eval_technique is not None:
                 fval = eval_technique(fval)
+            else:
+                format = field_defs.get(fkey, {}).get("format")
+                if format is not None:
+                    val = from_format(fval, format)
+                    if val is not None:
+                        fval = val
+                    del val
 
-        # Value (possibly converted from bytes)
-        field["value"] = fval
+            # Value (possibly converted from bytes)
+            field["value"] = fval
 
-        # Is there a natural way to read this data
-        natural_technique = field_defs.get(fkey, {}).get("natural")
-        if natural_technique:
-            fnat = natural_technique(fval)
-            field["natural"] = fnat
-        units = field_defs.get(fkey, {}).get("units")
-        if units:
-            field["units"] = units
+            # Is there a natural way to read this data
+            natural_technique = field_defs.get(fkey, {}).get("natural")
+            if natural_technique:
+                fnat = natural_technique(fval, field["bytes"])
+                field["natural"] = fnat
+            units = field_defs.get(fkey, {}).get("units")
+            if units:
+                field["units"] = units
 
         vals[fkey] = field
 
@@ -195,81 +258,370 @@ UAS_PAYLOAD_DICTIONARY = {
         2: {"name": "UNIX Time Stamp",
             "size": 8,
             "format": "uint64",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=False),
             # Timestamp is in microseconds - convert to seconds for Python
-            "natural": lambda x: datetime.datetime.utcfromtimestamp(x / 1000 / 1000).strftime('%Y-%m-%dT%H:%M:%SZ')
+            "natural": lambda x, b: datetime.datetime.utcfromtimestamp(x / 1000 / 1000).strftime('%Y-%m-%dT%H:%M:%SZ')
             },
         3: {"name": "Mission ID",
-            "format": "ISO 646",
-            "eval": lambda b: b.decode("ascii")
+            "format": "ISO 646"
             },
         4: {"name": "Platform Tail Number",
-            "format": "ISO 646",
-            "eval": lambda b: b.decode("ascii")
+            "format": "ISO 646"
             },
         5: {"name": "Platform Heading Angle",
             "size": 2,
             "format": "uint16",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=False),
-            "natural": lambda x: 360.0 * (x / 0xFFFF),
+            "natural": lambda x, b: 360.0 * (x / 0xFFFF),
             "units": "degrees"
             },
         6: {"name": "Platform Pitch Angle",
             "size": 2,
             "format": "int16",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=True),
-            "natural": lambda x: 40.0 * (x / 0xFFFF),
+            "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
             "units": "degrees"
             },
         7: {"name": "Platform Roll Angle",
             "size": 2,
             "format": "int16",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=True),
-            "natural": lambda x: 100.0 * (x / 0xFFFF),
+            "natural": lambda x, b: 2 * 50.0 * (x / 0xFFFF) if b != b'\x80\x00' else "out of range",
             "units": "degrees"
             },
         8: {"name": "Platform True Airspeed",
             "size": 1,
             "format": "uint8",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=False),
-            "units": "m/s"
+            "units": "meters / second"
             },
         9: {"name": "Platform Indicated Airspeed",
             "size": 1,
             "format": "uint8",
-            "eval": lambda b: int.from_bytes(b, byteorder='big', signed=False),
-            "units": "m/s"
+            "units": "meters / second"
             },
         10: {"name": "Platform Designation",
-             "format": "ISO 646",
-             "eval": lambda b: b.decode("ascii")
+             "format": "ISO 646"
              },
         11: {"name": "Image Source Sensor",
              "format": "ISO 646",
-             "eval": lambda b: b.decode("ascii")
+             # "eval": lambda b: b.decode("ascii")
              },
         12: {"name": "Image Coordinate System",
-             "format": "ISO 646",
-             "eval": lambda b: b.decode("ascii")
+             "format": "ISO 646"
              },
         13: {"name": "Sensor Latitude",
              "size": 4,
              "format": "int32",
-             "eval": lambda b: int.from_bytes(b, byteorder='big', signed=True),
-             "natural": lambda x: 180.0 * (x / 0xfffffffe)
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
              },
         14: {"name": "Sensor Longitude",
              "size": 4,
              "format": "int32",
-             "eval": lambda b: int.from_bytes(b, byteorder='big', signed=True),
-             "natural": lambda x: 360.0 * (x / 0xfffffffe)
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        15: {"name": "Sensor True Altitude",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        16: {"name": "Sensor Horizontal Field of View",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 180.0 * (x / 0xFFFF),
+             "units": "degrees"
+             },
+        17: {"name": "Sensor Vertical Field of View",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 180.0 * (x / 0xFFFF),
+             "units": "degrees"
+             },
+        18: {"name": "Sensor Relative Azimuth Angle",
+             "size": 4,
+             "format": "uint32",
+             "natural": lambda x, b: 360.0 * (x / 0xFFFFFFFF),
+             "units": "degrees"
+             },
+        19: {"name": "Sensor Relative Elevation Angle",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        20: {"name": "Sensor Relative Roll Angle",
+             "size": 4,
+             "format": "uint32",
+             "natural": lambda x, b: 360.0 * (x / 0xFFFFFFFF),
+             "units": "degrees"
+             },
+        21: {"name": "Slant Range",
+             "size": 4,
+             "format": "uint32",
+             "natural": lambda x, b: 5000000.0 * (x / 0xFFFFFFFF),
+             "units": "meters"
+             },
+        22: {"name": "Target Width",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 10000.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        23: {"name": "Frame Center Latitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        24: {"name": "Frame Center Longitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        25: {"name": "Frame Center Elevation",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        26: {"name": "Offset Corner Latitude Point 1",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        27: {"name": "Offset Corner Longitude Point 1",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        28: {"name": "Offset Corner Latitude Point 2",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        29: {"name": "Offset Corner Longitude Point 2",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        30: {"name": "Offset Corner Latitude Point 3",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        31: {"name": "Offset Corner Longitude Point 3",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        32: {"name": "Offset Corner Latitude Point 4",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        33: {"name": "Offset Corner Longitude Point 4",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "units": "degrees"
+             },
+        34: {"name": "Icing Detected"},
+        37: {"name": "Static Pressure",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 5000.0 * (x / 0xFFFF),
+             "units": "millibar"
+             },
+        38: {"name": "Density Altitude",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        39: {"name": "Outside Air Temperature",
+             "size": 1,
+             "format": "int8",
+             "units": "degrees celsius"
+             },
+        40: {"name": "Target Location Latitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        41: {"name": "Target Location Longitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
+             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "units": "degrees"
+             },
+        42: {"name": "Target Location Elevation",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        43: {"name": "Target Track Gate Width",
+             "size": 1,
+             "format": "uint8",
+             "units": "pixels"
+             },
+        44: {"name": "Target Track Gate Height",
+             "size": 1,
+             "format": "uint8",
+             "units": "pixels"
+             },
+        45: {"name": "Target Error Estimate - CE90",
+             "size": 2,
+             "format": "uint16",
+             "units": "meters"
+             },
+        46: {"name": "Target Error Estimate - LE90",
+             "size": 2,
+             "format": "uint16",
+             "units": "meters"
+             },
+        47: {"name": "Generic Flag Data 01",
+             "size": 1,
+             "format": "uint8",
+             "bitmap": {
+                 1: ("Laser Range", "off", "on"),
+                 2: ("Auto-Track", "off", "on"),
+                 3: ("IR Polarity", "white", "black"),
+                 4: ("Icing Detected", "no", "yes"),
+                 5: ("Slant Range", "calculated", "measured"),
+                 6: ("Image Invalid", "no", "yes")
+             },
+             "natural": lambda x, b:
+             {k: "{}: {}".format(
+                 UAS_PAYLOAD_DICTIONARY["fields"][47]["bitmap"][k][0],
+                 UAS_PAYLOAD_DICTIONARY["fields"][47]["bitmap"][k][1 + ((x & (1 << (k - 1))) >> (k - 1))]
+             ) for k in UAS_PAYLOAD_DICTIONARY["fields"][47]["bitmap"].keys()}
+             },
+        48: {"name": "Security Local Metadata Set"},
+        49: {"name": "Differential Pressure",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 5000.0 * (x / 0xFFFF),
+             "units": "millibar"
+             },
+        50: {"name": "Platform Angle of Attack",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "units": "degrees"
+             },
+        51: {"name": "Platform Vertical Speed",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "units": "meters / second"
+             },
+        52: {"name": "Platform Sideslip Angle",
+             "size": 2,
+             "format": "int16",
+             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "units": "degrees"
+             },
+        53: {"name": "Airfield Barometric Pressure",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 5000.0 * (x / 0xFFFF),
+             "units": "millibar"
+             },
+        54: {"name": "Airfield Elevation",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        55: {"name": "Relative Humidity",
+             "size": 1,
+             "format": "uint8",
+             "natural": lambda x, b: 100.0 * (x / 0xFF),
+             "units": "percent"
+             },
+        56: {"name": "Platform Ground Speed",
+             "size": 1,
+             "format": "uint8",
+             "units": "meters / second"
+             },
+        57: {"name": "Ground Range",
+             "size": 4,
+             "format": "uint32",
+             "natural": lambda x, b: 5000000.0 * (x / 0xFFFFFFFF),
+             "units": "meters"
+             },
+        58: {"name": "Platform Fuel Remaining",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 10000.0 * (x / 0xFFFFFFFF),
+             "units": "kilograms"
+             },
+        59: {"name": "Platform Call Sign",
+             "format": "ISO 646"
+             },
+        60: {"name": "Weapon Load",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: (x,b)
              }
     }
 }  # end UAS_PAYLOAD_DICTIONARY
 
+# bm = UAS_PAYLOAD_DICTIONARY["fields"][47]["bitmap"]
+# print(bm)
+# val = 0b00000011
+# nat = {k: "{}: {}".format(
+#     bm.get(k)[0],
+#     bm.get(k)[1 + ((val & (1 << (k - 1))) >> (k - 1))]
+# ) for k in bm.keys()}
+# print(nat)
+
+
+# for i in bm.keys():
+#     bit_val = ((val & (1<<(i-1)))>>(i-1))
+#     # print(i, bit_val)
+#     msg = "{}: {}".format(
+#         bm.get(i)[0],
+#         bm.get(i)[1+((val & (1<<(i-1)))>>(i-1))]
+#     )
+#     print(msg)
+# print(bm.get(i)) if (val & (1<<(i-1))) else print("NO")
+
+# if val & (1<<(i-1)):
+#     print(i,"set")
+# def bits(n):
+#     while n:
+#         b = n & (~n + 1)
+#         yield b
+#         n ^= b
+
+
+# for b in bits(val):
+#     print(b)
+
+# sys.exit(3)
+KLV_EXAMPLE_TAG_47_FLAGS_as_bytes
 # with open("out.klv", "rb") as f:
 #     for key, value in parse(f, 16, LENGTH_BER):
-for key, value in parse(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+# for key, value in parse(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+# for key, value in parse(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
+# for key, value in parse(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+for key, value in parse(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
     if key == UAS_KEY:
         print("RECEIVED UAS PAYLOAD:", value)
         payload = parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
