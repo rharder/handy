@@ -20,31 +20,47 @@ C8 4C
 KLV_EXAMPLE_1_arr = [int(h, base=16) for h in KLV_EXAMPLE_1.split()]
 KLV_EXAMPLE_1_as_bytes = bytes(KLV_EXAMPLE_1_arr)
 
-LENGTH_1_BYTE = 1
-LENGTH_2_BYTES = 2
-LENGTH_4_BYTES = 4
-LENGTH_BER = "BER"
-VALID_LENGTH_ENCODING = (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES, LENGTH_BER)
+# Permissible Length Encodings
+LENGTH_1_BYTE = 1  # 1 byte
+LENGTH_2_BYTES = 2  # 2 bytes
+LENGTH_4_BYTES = 4  # 4 bytes
+LENGTH_BER = "BER"  # Variable number of bytes
+LENGTH_VALID_ENCODINGS = (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES, LENGTH_BER)
 
-KEY_LENGTH_1 = 1
-KEY_LENGTH_2 = 2
-KEY_LENGTH_4 = 4
-KEY_LENGTH_16 = 16
-KEY_LENGTH_BER_OID = "BER-OID"
+# Permissible Key Encodings
+KEY_LENGTH_1 = 1  # 1 byte
+KEY_LENGTH_2 = 2  # 2 bytes
+KEY_LENGTH_4 = 4  # 4 bytes
+KEY_LENGTH_16 = 16  # 16 bytes
+KEY_LENGTH_BER_OID = "BER-OID"  # Variable number of bytes
 KEY_VALID_ENCODINGS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_16, KEY_LENGTH_BER_OID)
 KEY_FIXED_LENGTHS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_16)
 KEY_LENGTHS_AS_INTS = (KEY_LENGTH_1, KEY_LENGTH_2, KEY_LENGTH_4, KEY_LENGTH_BER_OID)
 
 
 def parse(source, key_size, length_encoding):
-    if length_encoding not in VALID_LENGTH_ENCODING:
-        raise Exception("Invalid length encoding: {}".format(length_encoding))
+    """
+    Parses a stream and yields (key, value) tuples until the source is exhausted.
 
-    enforce_valid_key_lengths = True
+    Keys of less than 16 bytes are returned as an integer.  16-byte keys are returned
+    as a "bytes" object.
+
+    Raises an Exception if an invalid key size or length encoding is passed.
+
+    :param source: data source as a stream or "bytes" object
+    :param key_size: valid key sizes are 1, 2, 4, 16 or "BER-OID"
+    :param length_encoding: valid length encodings are 1, 2, 4, or "BER"
+    :return: (key, value) tuple
+    """
+
+    enforce_valid_key_lengths = True  # Considered making this an argument at one point
     if enforce_valid_key_lengths and key_size not in KEY_VALID_ENCODINGS:
         raise Exception("Invalid key length: {}".format(key_size))
     if key_size <= 0:
         raise Exception("Key length cannot be zero or negative: {}".format(key_size))
+
+    if length_encoding not in LENGTH_VALID_ENCODINGS:
+        raise Exception("Invalid length encoding: {}".format(length_encoding))
 
     # Input
     stream = None  # type: io.IOBase
@@ -79,6 +95,7 @@ def parse(source, key_size, length_encoding):
             #     more_to_process = False
             #     continue
 
+        # Convert key from bytes to int?
         if key_size in KEY_LENGTHS_AS_INTS:
             key = int.from_bytes(key, byteorder='big', signed=False)
 
@@ -90,17 +107,14 @@ def parse(source, key_size, length_encoding):
             assert length_encoding == LENGTH_BER
             ber = stream.read(1)
             ber = int.from_bytes(ber, byteorder='big', signed=False)
-            # (ber,) = unpack(">B", ber)
-            if ber & 0x80 == 0x80:  # High bit set
-                ber = ber & 0x7F  # clear high bit
-                # ber = unpack(">B", ber)
+            if ber & 0b10000000 != 0:  # High bit set
+                ber &= ~ 0b10000000  # clear high bit
                 length = stream.read(ber)
-                # (length,) = unpack(">B", length)
                 length = int.from_bytes(length, byteorder='big', signed=False)
             else:
                 length = ber
 
-        # Value
+        # Collect value
         value = stream.read(length)
 
         # Found a Key/Value pair
@@ -110,11 +124,21 @@ def parse(source, key_size, length_encoding):
     return
 
 
-def parse_into_dict(source, payload_dictionary):
-    key_length = payload_dictionary["key_length"]
-    length_encoding = payload_dictionary["length_encoding"]
-    field_defs = payload_dictionary["fields"]
+def parse_into_dict(source, payload_defs_dictionary):
+    """
+    Parses the source according to the definition provided in the
+    provided dictionary.  The source will continue to be parsed
+    until it is empty.
 
+    :param source:
+    :param payload_defs_dictionary:
+    :return:
+    """
+    key_length = payload_defs_dictionary["key_length"]
+    length_encoding = payload_defs_dictionary["length_encoding"]
+    field_defs = payload_defs_dictionary["fields"]
+
+    # Make the source a stream
     stream = None  # type: io.IOBase
     if issubclass(type(source), io.IOBase):
         stream = source
@@ -125,10 +149,7 @@ def parse_into_dict(source, payload_dictionary):
 
     vals = {}
     for fkey, fval in parse(stream, key_length, length_encoding):
-        field = {}
-
-        # Raw Bytes
-        field["bytes"] = fval
+        field = {"bytes": fval}  # Always save raw bytes
 
         # Name of Field
         fname = field_defs.get(fkey, {}).get("name")
@@ -166,8 +187,8 @@ def parse_into_dict(source, payload_dictionary):
 
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
-# UAS_KEY = b'\x06\x0e+4\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
 UAS_PAYLOAD_DICTIONARY = {
+    "top_level_key": UAS_KEY,
     "key_length": KEY_LENGTH_1,
     "length_encoding": LENGTH_BER,
     "fields": {
@@ -244,40 +265,10 @@ UAS_PAYLOAD_DICTIONARY = {
              "natural": lambda x: 360.0 * (x / 0xfffffffe)
              }
     }
-}
-# print("{:08x}".format((2**31)-1))
-# low = -((2**31)-1)
-# high = +((2**31)-1)
-# print(low, high)
-# print("{:08x}, {:08x}".format(low,high))
-# print(high - low)
-# print("{:12x}".format(high - low))
-# print(-90 + 180*  (1435874925 / ((2**31)-1)))
-# # print("{:08x}".format((2**16)-1))
-# lat = 0x5595B66D
-# lat = int("5595B66D", base=16)
-# print(lat/0xFFFFFFFF)
-# sys.exit(3)
-
-# x = 1231798102000000
-# # print(datetime.datetime.utcfromtimestamp(x).strftime('%Y-%m-%dT%H:%M:%SZ'))
-# a = datetime.datetime.fromtimestamp(x/1000/1000)
-
-
-# def gen():
-#     for i in range(3):
-#         if i == 2:
-#             return
-#         yield i
-# for x in gen():
-#     print(x)
-# sys.exit(x)
-
+}  # end UAS_PAYLOAD_DICTIONARY
 
 # with open("out.klv", "rb") as f:
-#     for klv in parse(f, 16, LENGTH_BER):
-#         print(klv)
-#
+#     for key, value in parse(f, 16, LENGTH_BER):
 for key, value in parse(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
     if key == UAS_KEY:
         print("RECEIVED UAS PAYLOAD:", value)
@@ -287,14 +278,3 @@ for key, value in parse(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
     else:
         print("RECEIVED UNKNOWN KEY:", key)
         print("\tUNKNOWN PAYLOAD:", value)
-
-# key, value = parse(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER)
-# parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
-
-# stream = io.BytesIO(KLV_EXAMPLE_1_as_bytes)
-# stream = open("out.klv", "rb")
-# while True:
-#     x = stream.read(1)
-#     print(x)
-#     # time.sleep(.1)
-# stream.close()
