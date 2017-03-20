@@ -69,6 +69,99 @@ INT_FORMAT_REGEX_PATTERN = "^(u?)int([0-9]+)$"
 INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
 
 
+class KLV(object):
+    def __init__(self, length_encoding=LENGTH_BER, key_encoding=KEY_LENGTH_BER_OID, value_format=None):
+        self.key = None
+        self.value = None
+        self.length_encoding = length_encoding
+        self.key_encoding = key_encoding
+        self.value_format = value_format
+
+    def __str__(self):
+        return "KLV(key={}, length={}, value={}, bytes={})".format(self.key, self.length, self.value, repr(self))
+
+    def __repr__(self):
+        return ' '.join('{:02X}'.format(x) for x in self.to_bytes())
+
+    @property
+    def length(self):
+        return len(self.length_bytes())
+
+    def to_bytes(self) -> bytes:
+        key_bytes = self.key_bytes()
+        value_bytes = self.value_bytes()
+        length_bytes = self.length_bytes(cached_value_bytes=value_bytes)
+        return key_bytes + length_bytes + value_bytes
+
+    def key_bytes(self):
+        key_bytes = None  # type: bytes
+        # Convert key to bytes
+        if isinstance(self.key, bytes):
+            if self.key_encoding in KEY_FIXED_LENGTHS:
+                if len(self.key) != self.key_encoding:
+                    raise Exception("Provided key ({} bytes) does not match key length {}"
+                                    .format(len(self.key), self.key_encoding))
+                else:
+                    key_bytes = key
+            elif self.key_encoding == KEY_LENGTH_BER_OID:
+                # Verify provided key is valid
+                print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
+                key_bytes = key
+        elif isinstance(key, int):
+            key_bytes = key.to_bytes(self.key_encoding, byteorder=BIG_ENDIAN, signed=False)
+        else:
+            raise Exception("Unknown key type: {}".format(type(key)))
+        print("KEY_BYTES:", key_bytes)
+        return key_bytes
+
+    def length_bytes(self, cached_value_bytes=None):
+        value_bytes = cached_value_bytes or self.value_bytes()
+        return KLV.static_length_bytes(value_bytes, self.length_encoding)
+
+    @staticmethod
+    def static_length_bytes(value_bytes, length_encoding):
+        length_bytes = None  # type: bytes
+
+        # Length
+        length = len(value_bytes)
+        if length_encoding in LENGTH_ENCODINGS_FIXED_LENGTHS:
+            length_bytes = length.to_bytes(length_encoding, byteorder=BIG_ENDIAN, signed=False)
+        elif length_encoding == LENGTH_BER:
+            # Simple case: BER with length < 127
+            if length <= 127:
+                length_bytes = length.to_bytes(1, byteorder=BIG_ENDIAN, signed=False)
+            else:
+                # Complex case: BER needs to record number of bytes for length field separately
+                bytes_reqd = int(log(length, 256)) + 1
+                if bytes_reqd > 127:
+                    raise Exception("Bytes required ({}) to represent the size of the data cannot be greater than 127"
+                                    .format(bytes_reqd))
+                ber_byte = (0b10000000 | bytes_reqd).to_bytes(1, byteorder=BIG_ENDIAN, signed=False)
+                length_bytes = ber_byte + length.to_bytes(bytes_reqd, byteorder=BIG_ENDIAN, signed=False)
+        else:
+            raise Exception("Unknown length encoding: {}".format(length_encoding))
+        # print("LENGTH BYTES:", length_bytes)
+        return length_bytes
+
+    def value_bytes(self):
+        return KLV.static_value_bytes(self.value, self.value_format)
+
+    @staticmethod
+    def static_value_bytes(value, value_format=None):
+        value_bytes = None  # type: bytes
+
+        # Convert value to bytes
+        if isinstance(value, bytes):
+            value_bytes = value
+        elif value_format is not None:
+            value_bytes = to_format(value, value_format)
+            if value_bytes is None:
+                raise Exception("Was not able to convert value ({}) to bytes".format(value))
+        else:
+            raise Exception("Could not convert value {} to bytes".format(value))
+        # print("VALUE BYTES:", value_bytes)
+        return value_bytes
+
 def from_format(data: bytes, format: str):
     # Integer
     m = INT_FORMAT_REGEX.search(format)
@@ -81,7 +174,8 @@ def from_format(data: bytes, format: str):
     elif format in ("ISO 646", "ascii"):
         return data.decode("ascii")
 
-def to_format(data, format:str) -> bytes:
+
+def to_format(data, format: str) -> bytes:
     # Integer
     m = INT_FORMAT_REGEX.search(format)
     if m is not None:
@@ -94,7 +188,7 @@ def to_format(data, format:str) -> bytes:
         try:
             data_bytes = data.to_bytes(bytes_reqd, byteorder=BIG_ENDIAN, signed=signed)
         except OverflowError:
-            data_bytes = (0x80 << (bytes_reqd-1)).to_bytes(bytes_reqd, byteorder=BIG_ENDIAN, signed=False)
+            data_bytes = (0x80 << (bytes_reqd - 1)).to_bytes(bytes_reqd, byteorder=BIG_ENDIAN, signed=False)
         finally:
             return data_bytes
     elif format in ("ISO 646", "ascii"):
@@ -102,8 +196,6 @@ def to_format(data, format:str) -> bytes:
             raise Exception("A string format ({}) was specified, but a string was not supplied: {}"
                             .format(format, type(data)))
         return data.encode("ascii")
-
-
 
 
 # samples = ["{}int{}".format(a,x) for a in ('u','') for x in (8,16,32,64)]
@@ -332,10 +424,9 @@ def build_klv(key, value, key_length, length_encoding, value_format: str = None)
     print("LENGTH BYTES:", length_bytes)
 
     klv = key_bytes + length_bytes + value_bytes
-    print("KLV:", klv)
+    # print("KLV:", klv)
 
     return klv
-
 
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
@@ -361,7 +452,7 @@ UAS_PAYLOAD_DICTIONARY = {
             "format": "uint16",
             "natural": lambda x, b: 360.0 * (x / 0xFFFF),
             "units": "degrees",
-            "from_natural": lambda x: int((x / 360.0 * 0xFFFF))#.to_bytes(2, byteorder=BIG_ENDIAN, signed=False)
+            "from_natural": lambda x: int((x / 360.0 * 0xFFFF))  # .to_bytes(2, byteorder=BIG_ENDIAN, signed=False)
             },
         6: {"name": "Platform Pitch Angle",
             "size": 2,
@@ -673,15 +764,25 @@ UAS_PAYLOAD_DICTIONARY = {
     }
 }  # end UAS_PAYLOAD_DICTIONARY
 
-
-
 # klv = build_klv(5, b'\x71\xc2', KEY_LENGTH_1, LENGTH_BER)
-klv = build_klv(5, 0x71c2, KEY_LENGTH_1, LENGTH_BER, value_format="uint16")
+klv1 = build_klv(5, 0x71c2, KEY_LENGTH_1, LENGTH_BER, value_format="uint16")
+print("KLV1:", ' '.join('{:02X}'.format(x) for x in klv1))
+
+klv2 = KLV(length_encoding=LENGTH_BER, key_encoding=KEY_LENGTH_1)
+klv2.key =5
+klv2.value = 0x71c
+print("KLV2:", klv2)
+
+
+sys.exit(3)
+
 field_def = UAS_PAYLOAD_DICTIONARY["fields"][5]
-vb = field_def["from_natural"](159.97436484321355)
+from_natural = field_def["from_natural"]  # type: callable
+vb = from_natural(159.97436484321355)
 klv = build_klv(5, vb, KEY_LENGTH_1, LENGTH_BER, value_format="uint16")
 print("KLV:", ' '.join('{:02X}'.format(x) for x in klv))
 
+# sys.exit(2)
 
 field_def = UAS_PAYLOAD_DICTIONARY["fields"][6]
 vb = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
@@ -696,7 +797,6 @@ print("KLV:", ' '.join('{:02X}'.format(x) for x in klv))
 # k,v = parse(klv, KEY_LENGTH_1, LENGTH_BER)
 # print(k,v)
 sys.exit(3)
-
 
 # bm = UAS_PAYLOAD_DICTIONARY["fields"][47]["bitmap"]
 # print(bm)
@@ -735,14 +835,14 @@ sys.exit(3)
 # with open("out.klv", "rb") as f:
 #     for key, value in parse_continually(f, 16, LENGTH_BER):
 for key, value in parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
-        # for key, value in parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
-        # for key, value in parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
-        # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
-        if key == UAS_KEY:
-            print("RECEIVED UAS PAYLOAD:", value)
-            payload = parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
-            print("\tPAYLOAD:", payload)
-            pprint(payload)
-        else:
-            print("RECEIVED UNKNOWN KEY:", key)
-            print("\tUNKNOWN PAYLOAD:", value)
+    # for key, value in parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
+    # for key, value in parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+    # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
+    if key == UAS_KEY:
+        print("RECEIVED UAS PAYLOAD:", value)
+        payload = parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
+        print("\tPAYLOAD:", payload)
+        pprint(payload)
+    else:
+        print("RECEIVED UNKNOWN KEY:", key)
+        print("\tUNKNOWN PAYLOAD:", value)
