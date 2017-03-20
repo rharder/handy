@@ -70,18 +70,25 @@ INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
 
 
 class KLV(object):
-    def __init__(self, length_encoding=LENGTH_BER, key_encoding=KEY_LENGTH_BER_OID, value_format=None):
+    def __init__(self, key_encoding=KEY_LENGTH_BER_OID, length_encoding=LENGTH_BER, value_format=None):
         self.key = None
         self.value = None
         self.length_encoding = length_encoding
         self.key_encoding = key_encoding
         self.value_format = value_format
+        self.to_natural = None  # type: callable
+        self.from_natural = None  # type: callable
 
     def __str__(self):
         return "KLV(key={}, length={}, value={}, bytes={})".format(self.key, self.length, self.value, repr(self))
 
     def __repr__(self):
         return ' '.join('{:02X}'.format(x) for x in self.to_bytes())
+
+    def __bytes__(self):
+        """ Covnert KLV to bytes. """
+        # Not sure that __bytes__ is a real thing, but I like it.
+        return self.to_bytes()
 
     @property
     def length(self):
@@ -94,29 +101,36 @@ class KLV(object):
         return key_bytes + length_bytes + value_bytes
 
     def key_bytes(self):
-        key_bytes = None  # type: bytes
-        # Convert key to bytes
-        if isinstance(self.key, bytes):
-            if self.key_encoding in KEY_FIXED_LENGTHS:
-                if len(self.key) != self.key_encoding:
-                    raise Exception("Provided key ({} bytes) does not match key length {}"
-                                    .format(len(self.key), self.key_encoding))
-                else:
-                    key_bytes = key
-            elif self.key_encoding == KEY_LENGTH_BER_OID:
-                # Verify provided key is valid
-                print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
-                key_bytes = key
-        elif isinstance(key, int):
-            key_bytes = key.to_bytes(self.key_encoding, byteorder=BIG_ENDIAN, signed=False)
-        else:
-            raise Exception("Unknown key type: {}".format(type(key)))
-        print("KEY_BYTES:", key_bytes)
-        return key_bytes
+        return KLV.static_key_bytes(self.key, self.key_encoding)
 
     def length_bytes(self, cached_value_bytes=None):
         value_bytes = cached_value_bytes or self.value_bytes()
         return KLV.static_length_bytes(value_bytes, self.length_encoding)
+
+    def value_bytes(self):
+        return KLV.static_value_bytes(self.value, self.value_format)
+
+    @staticmethod
+    def static_key_bytes(key, key_encoding):
+        key_bytes = None  # type: bytes
+        # Convert key to bytes
+        if isinstance(key, bytes):
+            if key_encoding in KEY_FIXED_LENGTHS:
+                if len(key) != key_encoding:
+                    raise Exception("Provided key ({} bytes) does not match key length {}"
+                                    .format(len(key), key_encoding))
+                else:
+                    key_bytes = key
+            elif key_encoding == KEY_LENGTH_BER_OID:
+                # Verify provided key is valid
+                print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
+                key_bytes = key
+        elif isinstance(key, int):
+            key_bytes = key.to_bytes(key_encoding, byteorder=BIG_ENDIAN, signed=False)
+        else:
+            raise Exception("Unknown key type: {}".format(type(key)))
+        # print("KEY_BYTES:", key_bytes)
+        return key_bytes
 
     @staticmethod
     def static_length_bytes(value_bytes, length_encoding):
@@ -143,9 +157,6 @@ class KLV(object):
         # print("LENGTH BYTES:", length_bytes)
         return length_bytes
 
-    def value_bytes(self):
-        return KLV.static_value_bytes(self.value, self.value_format)
-
     @staticmethod
     def static_value_bytes(value, value_format=None):
         value_bytes = None  # type: bytes
@@ -158,9 +169,10 @@ class KLV(object):
             if value_bytes is None:
                 raise Exception("Was not able to convert value ({}) to bytes".format(value))
         else:
-            raise Exception("Could not convert value {} to bytes".format(value))
+            raise Exception("Could not convert value ({}) to bytes".format(value))
         # print("VALUE BYTES:", value_bytes)
         return value_bytes
+
 
 def from_format(data: bytes, format: str):
     # Integer
@@ -769,10 +781,10 @@ klv1 = build_klv(5, 0x71c2, KEY_LENGTH_1, LENGTH_BER, value_format="uint16")
 print("KLV1:", ' '.join('{:02X}'.format(x) for x in klv1))
 
 klv2 = KLV(length_encoding=LENGTH_BER, key_encoding=KEY_LENGTH_1)
-klv2.key =5
+klv2.key = 5
 klv2.value = 0x71c
+klv2.value_format = "uint16"
 print("KLV2:", klv2)
-
 
 sys.exit(3)
 
