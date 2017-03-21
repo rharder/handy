@@ -54,14 +54,14 @@ LENGTH_ENCODINGS_FIXED_LENGTHS = (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES)
 LENGTH_VALID_ENCODINGS = (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES, LENGTH_BER)
 
 # Permissible Key Encodings
-key_encoding_1 = 1  # 1 byte
-key_encoding_2 = 2  # 2 bytes
-key_encoding_4 = 4  # 4 bytes
-key_encoding_16 = 16  # 16 bytes
-key_encoding_BER_OID = "BER-OID"  # Variable number of bytes
-KEY_VALID_ENCODINGS = (key_encoding_1, key_encoding_2, key_encoding_4, key_encoding_16, key_encoding_BER_OID)
-KEY_FIXED_LENGTHS = (key_encoding_1, key_encoding_2, key_encoding_4, key_encoding_16)
-key_encodingS_AS_INTS = (key_encoding_1, key_encoding_2, key_encoding_4, key_encoding_BER_OID)
+KEY_ENCODING_1_BYTE = 1  # 1 byte
+KEY_ENCODING_2_BYTES = 2  # 2 bytes
+KEY_ENCODING_4_BYTES = 4  # 4 bytes
+KEY_ENCODING_16_BYTES = 16  # 16 bytes
+KEY_ENCODING_BER_OID = "BER-OID"  # Variable number of bytes
+KEY_VALID_ENCODINGS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_16_BYTES, KEY_ENCODING_BER_OID)
+KEY_FIXED_LENGTHS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_16_BYTES)
+KEY_ENCODINGS_AS_INTS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_BER_OID)
 
 BIG_ENDIAN = 'big'
 
@@ -71,7 +71,7 @@ INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
 
 
 class KLV(object):
-    def __init__(self, key=None, value=None, key_encoding=key_encoding_BER_OID, length_encoding=LENGTH_BER, value_format=None):
+    def __init__(self, key=None, value=None, key_encoding=KEY_ENCODING_BER_OID, length_encoding=LENGTH_BER, value_format=None):
         self.key = key
         self.value = value
         self.length_encoding = length_encoding
@@ -121,18 +121,34 @@ class KLV(object):
 
         # Convert key to bytes
         if isinstance(key, bytes):
-            if key_encoding in KEY_FIXED_LENGTHS:
-                if len(key) != key_encoding:
-                    raise Exception("Provided key ({} bytes) does not match key length {}"
-                                    .format(len(key), key_encoding))
-                else:
-                    key_bytes = key
-            elif key_encoding == key_encoding_BER_OID:
-                # Verify provided key is valid
-                print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
+            # if key_encoding in KEY_FIXED_LENGTHS:
+            if len(key) != key_encoding:
+                raise Exception("Provided key ({} bytes) does not match key length {}"
+                                .format(len(key), key_encoding))
+            else:
                 key_bytes = key
+
         elif isinstance(key, int):
-            key_bytes = key.to_bytes(key_encoding, byteorder=BIG_ENDIAN, signed=False)
+            if key_encoding in KEY_FIXED_LENGTHS:
+                key_bytes = key.to_bytes(key_encoding, byteorder=BIG_ENDIAN, signed=False)
+
+            elif key_encoding == KEY_ENCODING_BER_OID:
+                # Verify provided key is valid
+                # print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
+                # key_bytes = key
+                key_buffer = key  # type: int
+                bytes_buffer = []
+                mask_add = 0b00000000
+                while key_buffer != 0:
+                    new_byte = key_buffer & 0b01111111  # save 7 bits
+                    new_byte |= mask_add  # Set bit 8 for all but last (right most/least significant) byte
+                    bytes_buffer.insert(0, new_byte)
+                    key_buffer = key_buffer >> 7
+                    mask_add |= 0b10000000
+                key_bytes = bytes(bytes_buffer)
+                # print("BER-OID:", ["{:08b}".format(b) for b in key_bytes])
+            else:
+                raise Exception("Unknown key encoding: {}".format(key_encoding))
         else:
             raise Exception("Unknown key type: {}".format(type(key)))
         return key_bytes
@@ -284,16 +300,30 @@ class KLV(object):
                     more_to_process = False
                     continue
             else:
-                assert key_encoding == key_encoding_BER_OID
+                assert key_encoding == KEY_ENCODING_BER_OID
                 # READ KEY AS BER-OID
-                raise Exception("HAVE NOT YET IMPLEMENTED BER-OID KEY ENCODING")
+                # raise Exception("HAVE NOT YET IMPLEMENTED BER-OID KEY ENCODING")
+                key_buffer = []
+                more_key = True
+                while more_key:
+                    a_byte = stream.read(1)
+                    key_buffer.append(a_byte)
+                    if a_byte & 0b10000000 == 0:  # last byte
+                        more_key = False
+                key = 0
+                for i, a_byte in enumerate(key_buffer):
+                    key = key | (a_byte & 0b01111111)
+                    if a_byte & 0b10000000 != 0:  # more bytes to go
+                        key <<= 7
+
+
                 # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
                 # if key == b'':
                 #     more_to_process = False
                 #     continue
 
             # Convert key from bytes to int?
-            if key_encoding in key_encodingS_AS_INTS:
+            if key_encoding in KEY_ENCODINGS_AS_INTS:
                 key = int.from_bytes(key, byteorder='big', signed=False)
 
             # Compute Length
@@ -401,71 +431,74 @@ class KLV(object):
 
         return vals
 
-#
-# def build_klv(key, value, key_encoding, length_encoding, value_format: str = None):
-#     key_bytes = None  # type: bytes
-#     length_bytes = None  # type: bytes
-#     value_bytes = None  # type: bytes
-#
-#     # Convert key to bytes
-#     if isinstance(key, bytes):
-#         if key_encoding in KEY_FIXED_LENGTHS:
-#             if len(key) != key_encoding:
-#                 raise Exception("Provided key ({} bytes) does not match key length {}".format(len(key), key_encoding))
-#             else:
-#                 key_bytes = key
-#         elif key_encoding == key_encoding_BER_OID:
-#             # Verify provided key is valid
-#             print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
-#             key_bytes = key
-#     elif isinstance(key, int):
-#         key_bytes = key.to_bytes(key_encoding, byteorder=BIG_ENDIAN, signed=False)
-#     else:
-#         raise Exception("Unknown key type: {}".format(type(key)))
-#     print("KEY_BYTES:", key_bytes)
-#
-#     # Convert value to bytes
-#     if isinstance(value, bytes):
-#         value_bytes = value
-#     elif value_format is not None:
-#         value_bytes = KLV.static_format_to_bytes(value, value_format)
-#         if value_bytes is None:
-#             raise Exception("Was not able to convert value ({}) to bytes".format(value))
-#     else:
-#         raise Exception("Could not convert value {} to bytes".format(value))
-#     print("VALUE BYTES:", value_bytes)
-#
-#     # Length
-#     length = len(value_bytes)
-#     if length_encoding in LENGTH_ENCODINGS_FIXED_LENGTHS:
-#         length_bytes = length.to_bytes(length_encoding, byteorder=BIG_ENDIAN, signed=False)
-#     elif length_encoding == LENGTH_BER:
-#         # Simple case: BER with length < 127
-#         if length <= 127:
-#             length_bytes = length.to_bytes(1, byteorder=BIG_ENDIAN, signed=False)
-#         else:
-#             # Complex case: BER needs to record number of bytes for length field separately
-#             bytes_reqd = int(log(length, 256)) + 1
-#             if bytes_reqd > 127:
-#                 raise Exception("Bytes required ({}) to represent the size of the data cannot be greater than 127"
-#                                 .format(bytes_reqd))
-#             ber_byte = (0b10000000 | bytes_reqd).to_bytes(1, byteorder=BIG_ENDIAN, signed=False)
-#             length_bytes = ber_byte + length.to_bytes(bytes_reqd, byteorder=BIG_ENDIAN, signed=False)
-#     else:
-#         raise Exception("Unknown length encoding: {}".format(length_encoding))
-#     print("LENGTH BYTES:", length_bytes)
-#
-#     klv = key_bytes + length_bytes + value_bytes
-#     # print("KLV:", klv)
-#
-#     return klv
+    @staticmethod
+    def static_parse_key(source, key_encoding):
+
+        # Input
+        stream = None  # type: io.IOBase
+        if isinstance(source, io.IOBase):
+            stream = source
+        elif isinstance(source, bytes):
+            stream = io.BytesIO(source)
+
+        # Retrieve Key
+        if key_encoding in KEY_FIXED_LENGTHS:
+            key = stream.read(key_encoding)
+            # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
+            if key == b'':
+                return
+        else:
+            assert key_encoding == KEY_ENCODING_BER_OID
+            # READ KEY AS BER-OID
+            # raise Exception("HAVE NOT YET IMPLEMENTED BER-OID KEY ENCODING")
+            key_buffer = []
+            more_key = True
+            while more_key:
+                a_byte = stream.read(1)
+                if a_byte == b'':
+                    return
+                key_buffer.append(a_byte)
+                if a_byte & 0b10000000 == 0:  # last byte
+                    more_key = False
+            key = 0
+            for i, a_byte in enumerate(key_buffer):
+                key = key | (a_byte & 0b01111111)
+                if a_byte & 0b10000000 != 0:  # more bytes to go
+                    key <<= 7
+
+
+                    # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
+                    # if key == b'':
+                    #     more_to_process = False
+                    #     continue
+
+        # Convert key from bytes to int?
+        if key_encoding in KEY_ENCODINGS_AS_INTS:
+            key = int.from_bytes(key, byteorder='big', signed=False)
+
+
+key = 127
+key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+print(key, key2)
+
+key = 144
+key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+
+key = 23298
+key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+
+sys.exit(3)
+
+
 
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
 UAS_PAYLOAD_DICTIONARY = {
     "top_level_key": UAS_KEY,
-    "key_encoding": key_encoding_1,
+    "key_encoding": KEY_ENCODING_1_BYTE,
     "length_encoding": LENGTH_BER,
+    "documentation": "MISB ST 0601.8, 23 October 2014, UAS Datalink Local Set",
     "fields": {
         2: {"name": "UNIX Time Stamp",
             "size": 8,
@@ -882,7 +915,7 @@ for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
         klvs = [klv for klv in KLV.parse_continually(value,
                                                      key_encoding=UAS_PAYLOAD_DICTIONARY["key_encoding"],
                                                      length_encoding=UAS_PAYLOAD_DICTIONARY["length_encoding"])]
-        klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=key_encoding_16, length_encoding=LENGTH_BER)
+        klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
         print("KLVTOP:", klvtop)
 
     else:
