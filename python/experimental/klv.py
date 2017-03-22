@@ -821,8 +821,12 @@ UAS_PAYLOAD_DICTIONARY = {
         60: {"name": "Weapon Load",
              "size": 2,
              "format": "uint16",
-             "natural": lambda x, b: (x, b)
-             # TODO: LEFT OFF HERE - INCOMPLETE
+             "natural": lambda x, b: {"Station Number": (x >> 12) & 0b00001111,
+                                      "Substation Number": (x >> 8) & 0b00001111,
+                                      "Weapon Type": (x >> 4) & 0b00001111,
+                                      "Weapon Variant": x & 0b00001111
+                                      }
+             # TODO: LEFT OFF HERE - INCOMPLETE - CAN YOU HAVE MULTIPLE TAG 60 DATA POINTS?
              }
     }
 }  # end UAS_PAYLOAD_DICTIONARY
@@ -843,16 +847,20 @@ vb = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
 klv2 = KLV(key=6, value=vb, value_format="int16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
 klv0.value.append(klv2)
 
-# v60 = 0b1111000011110000
-# klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
-# klv0.value.append(klv60)
+sta_num = 1
+sub_num = 2
+wpn_typ = 3
+wpn_var = 4
+v60 = (sta_num << 12) | (sub_num << 8) | (wpn_typ << 4) |  wpn_var
+klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+klv0.value.append(klv60)
 
 print("KLV0:", klv0)
 print("KLV0:", ' '.join(["{:02X}".format(b) for b in klv0.klv_bytes()]))
 # klv00 = KLV.parse(klv0.klv_bytes(), key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
 # print("KLV00", klv00)
-klvd = KLV.parse_into_dict(klv0.klv_bytes(), UAS_PAYLOAD_DICTIONARY)
-# pprint(klvd)
+klvd = KLV.parse_into_dict(klv0.value_bytes(), UAS_PAYLOAD_DICTIONARY)
+pprint(klvd)
 sys.exit(5)
 
 
