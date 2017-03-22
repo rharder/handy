@@ -80,14 +80,14 @@ class KLV(object):
     def __init__(self,
                  key=None,
                  value=None,
-                 key_encoding=KEY_ENCODING_BER_OID,
-                 length_encoding=LENGTH_BER,
+                 key_encoding=None,
+                 length_encoding=None,
                  value_format=None):
 
         self.key = key
         self.value = value
-        self.length_encoding = length_encoding
-        self.key_encoding = key_encoding
+        self.key_encoding = key_encoding or KEY_ENCODING_BER_OID
+        self.length_encoding = length_encoding or LENGTH_BER
         self.value_format = value_format
 
         # self.to_natural = None  # type: callable
@@ -95,7 +95,10 @@ class KLV(object):
 
     def __str__(self) -> str:
         return "KLV(key=({}), length={}, value={}, bytes=({}))"\
-            .format(' '.join('{:02X}'.format(x) for x in self.key), self.length, self.value, repr(self))
+            .format(' '.join('{:02X}'.format(x) for x in self.key),
+                    self.length,
+                    self.value,
+                    repr(self))
 
     def __repr__(self) -> str:
         return ' '.join('{:02X}'.format(x) for x in self.klv_bytes())
@@ -197,14 +200,19 @@ class KLV(object):
         value_bytes = None  # type: bytes
 
         # Convert value to bytes
-        if isinstance(value, bytes):
+        if value is None:
+            value_bytes = b''
+
+        # Already bytes?
+        elif isinstance(value, bytes):
             value_bytes = value
 
         # List of KLVs perhaps
         elif isinstance(value, list):
             value_bytes = b''
             for item in value:
-                value_bytes += item.__bytes__()
+                # value_bytes += item.__bytes__()
+                value_bytes += KLV.static_value_bytes(item)
 
         # Some kind of primitive, eg, uint16
         elif value_format is not None:
@@ -481,22 +489,6 @@ class KLV(object):
         return length
 
 
-key = 127
-key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
-key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
-print(key, key2)
-
-key = 144
-key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
-key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
-print(key, key2)
-
-key = 23298
-key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
-key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
-print(key, key2)
-
-# sys.exit(3)
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
 UAS_PAYLOAD_DICTIONARY = {
@@ -830,9 +822,57 @@ UAS_PAYLOAD_DICTIONARY = {
              "size": 2,
              "format": "uint16",
              "natural": lambda x, b: (x, b)
+             # TODO: LEFT OFF HERE - INCOMPLETE
              }
     }
 }  # end UAS_PAYLOAD_DICTIONARY
+
+
+
+klv0 = KLV(key=UAS_KEY, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+klv0.value = []
+
+klv1 = KLV(key=5, value=0x71c, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+klv0.value.append(klv1)
+
+
+field_def = UAS_PAYLOAD_DICTIONARY["fields"][6]
+vb = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
+# klv = build_klv(6, vb, key_encoding_1, LENGTH_BER, value_format="int16")
+
+klv2 = KLV(key=6, value=vb, value_format="int16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+klv0.value.append(klv2)
+
+# v60 = 0b1111000011110000
+# klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+# klv0.value.append(klv60)
+
+print("KLV0:", klv0)
+print("KLV0:", ' '.join(["{:02X}".format(b) for b in klv0.klv_bytes()]))
+# klv00 = KLV.parse(klv0.klv_bytes(), key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+# print("KLV00", klv00)
+klvd = KLV.parse_into_dict(klv0.klv_bytes(), UAS_PAYLOAD_DICTIONARY)
+# pprint(klvd)
+sys.exit(5)
+
+
+# key = 127
+# key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+# key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+# print(key, key2)
+#
+# key = 144
+# key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+# key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+# print(key, key2)
+#
+# key = 23298
+# key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+# key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+# print(key, key2)
+# sys.exit(3)
+
+
 
 # klv = build_klv(5, b'\x71\xc2', key_encoding_1, LENGTH_BER)
 # klv1 = build_klv(5, 0x71c2, key_encoding_1, LENGTH_BER, value_format="uint16")
@@ -858,7 +898,6 @@ UAS_PAYLOAD_DICTIONARY = {
 # vb = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
 # klv = build_klv(6, vb, key_encoding_1, LENGTH_BER, value_format="int16")
 # print("KLV:", ' '.join('{:02X}'.format(x) for x in klv))
-# # TODO: LEFT OFF HERE
 
 
 # with open(__file__) as f:
