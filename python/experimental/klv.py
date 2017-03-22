@@ -1,12 +1,15 @@
 import io
 import sys
 import re
+import typing
 from pprint import pprint
 from struct import unpack
 from math import log
 import time
 
 import datetime
+
+import collections
 
 KLV_EXAMPLE_1 = """
 06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
@@ -59,64 +62,79 @@ KEY_ENCODING_2_BYTES = 2  # 2 bytes
 KEY_ENCODING_4_BYTES = 4  # 4 bytes
 KEY_ENCODING_16_BYTES = 16  # 16 bytes
 KEY_ENCODING_BER_OID = "BER-OID"  # Variable number of bytes
-KEY_VALID_ENCODINGS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_16_BYTES, KEY_ENCODING_BER_OID)
+KEY_VALID_ENCODINGS = (
+    KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_16_BYTES,
+    KEY_ENCODING_BER_OID)
 KEY_FIXED_LENGTHS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_16_BYTES)
 KEY_ENCODINGS_AS_INTS = (KEY_ENCODING_1_BYTE, KEY_ENCODING_2_BYTES, KEY_ENCODING_4_BYTES, KEY_ENCODING_BER_OID)
 
 BIG_ENDIAN = 'big'
 
 # Identifying int formats
-INT_FORMAT_REGEX_PATTERN = "^(u?)int([0-9]+)$"
-INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
+# INT_FORMAT_REGEX_PATTERN = "^(u?)int([0-9]+)$"
+# INT_FORMAT_REGEX = re.compile(INT_FORMAT_REGEX_PATTERN)
+INT_FORMAT_REGEX = re.compile("^(u?)int([0-9]+)$")
 
 
 class KLV(object):
-    def __init__(self, key=None, value=None, key_encoding=KEY_ENCODING_BER_OID, length_encoding=LENGTH_BER, value_format=None):
+    def __init__(self,
+                 key=None,
+                 value=None,
+                 key_encoding=KEY_ENCODING_BER_OID,
+                 length_encoding=LENGTH_BER,
+                 value_format=None):
+
         self.key = key
         self.value = value
         self.length_encoding = length_encoding
         self.key_encoding = key_encoding
         self.value_format = value_format
-        self.to_natural = None  # type: callable
-        self.from_natural = None  # type: callable
 
-    def __str__(self):
-        return "KLV(key={}, length={}, value={}, bytes=({}))".format(self.key, self.length, self.value, repr(self))
+        # self.to_natural = None  # type: callable
+        # self.from_natural = None  # type: callable
 
-    def __repr__(self):
+    def __str__(self) -> str:
+        return "KLV(key=({}), length={}, value={}, bytes=({}))"\
+            .format(' '.join('{:02X}'.format(x) for x in self.key), self.length, self.value, repr(self))
+
+    def __repr__(self) -> str:
         return ' '.join('{:02X}'.format(x) for x in self.klv_bytes())
 
-    def __bytes__(self):
+    def __bytes__(self) -> bytes:
         """ Covnert KLV to bytes. """
         # Not sure that __bytes__ is a real thing, but I like it.
         return self.klv_bytes()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.length
 
     @property
-    def length(self):
+    def length(self) -> int:
         return len(self.value_bytes())
-
 
     def klv_bytes(self) -> bytes:
         key_bytes = self.key_bytes()
         value_bytes = self.value_bytes()
         length_bytes = self.length_bytes(cached_value_bytes=value_bytes)
+        # klv_bytes = bytearray()
+        # klv_bytes += key_bytes
+        # klv_bytes += length_bytes
+        # klv_bytes += value_bytes
+        # return bytes(klv_bytes)
         return key_bytes + length_bytes + value_bytes
 
-    def key_bytes(self):
+    def key_bytes(self) -> bytes:
         return KLV.static_key_bytes(self.key, self.key_encoding)
 
-    def length_bytes(self, cached_value_bytes=None):
+    def length_bytes(self, cached_value_bytes=None) -> bytes:
         value_bytes = cached_value_bytes or self.value_bytes()
         return KLV.static_length_bytes(value_bytes, self.length_encoding)
 
-    def value_bytes(self):
+    def value_bytes(self) -> bytes:
         return KLV.static_value_bytes(self.value, self.value_format)
 
     @staticmethod
-    def static_key_bytes(key, key_encoding):
+    def static_key_bytes(key, key_encoding) -> bytes:
         key_bytes = None  # type: bytes
 
         # Convert key to bytes
@@ -133,11 +151,8 @@ class KLV(object):
                 key_bytes = key.to_bytes(key_encoding, byteorder=BIG_ENDIAN, signed=False)
 
             elif key_encoding == KEY_ENCODING_BER_OID:
-                # Verify provided key is valid
-                # print("VERIFY BER-OID KEYS NOT YET IMPLEMENTED")
-                # key_bytes = key
                 key_buffer = key  # type: int
-                bytes_buffer = []
+                bytes_buffer = bytearray()
                 mask_add = 0b00000000
                 while key_buffer != 0:
                     new_byte = key_buffer & 0b01111111  # save 7 bits
@@ -146,7 +161,7 @@ class KLV(object):
                     key_buffer = key_buffer >> 7
                     mask_add |= 0b10000000
                 key_bytes = bytes(bytes_buffer)
-                # print("BER-OID:", ["{:08b}".format(b) for b in key_bytes])
+
             else:
                 raise Exception("Unknown key encoding: {}".format(key_encoding))
         else:
@@ -154,7 +169,7 @@ class KLV(object):
         return key_bytes
 
     @staticmethod
-    def static_length_bytes(value_bytes, length_encoding):
+    def static_length_bytes(value_bytes, length_encoding) -> bytes:
         length_bytes = None  # type: bytes
 
         # Length
@@ -178,7 +193,7 @@ class KLV(object):
         return length_bytes
 
     @staticmethod
-    def static_value_bytes(value, value_format=None):
+    def static_value_bytes(value, value_format=None) -> bytes:
         value_bytes = None  # type: bytes
 
         # Convert value to bytes
@@ -220,7 +235,6 @@ class KLV(object):
         elif format in ("ISO 646", "ascii"):
             return data.decode("ascii")
 
-
     @staticmethod
     def static_format_to_bytes(data, format: str) -> bytes:
         data_bytes = None  # type: bytes
@@ -248,9 +262,13 @@ class KLV(object):
                                 .format(format, type(data)))
             return data.encode("ascii")
 
+    @staticmethod
+    def parse(source, key_encoding, length_encoding) -> "KLV":
+        return next(KLV.parse_continually(source, key_encoding, length_encoding))
+
 
     @staticmethod
-    def parse_continually(source, key_encoding, length_encoding):
+    def parse_continually(source, key_encoding, length_encoding) -> typing.Iterator["KLV"]:
         """
         Parses a stream and yields (key, value) tuples until the source is exhausted.
 
@@ -262,15 +280,12 @@ class KLV(object):
         :param source: data source as a stream or "bytes" object
         :param key_encoding: valid key sizes are 1, 2, 4, 16 or "BER-OID"
         :param length_encoding: valid length encodings are 1, 2, 4, or "BER"
-        :return: (key, value) tuple
+        :return: a KLV
+        :rtype: KLV
         """
 
-        enforce_valid_key_encodings = True  # Considered making this an argument at one point
-        if enforce_valid_key_encodings and key_encoding not in KEY_VALID_ENCODINGS:
+        if key_encoding not in KEY_VALID_ENCODINGS:
             raise Exception("Invalid key length or encoding: {}".format(key_encoding))
-
-        # if isinstance(key_encoding, int) and key_encoding <= 0:
-        #     raise Exception("Key length cannot be zero or negative: {}".format(key_encoding))
 
         if length_encoding not in LENGTH_VALID_ENCODINGS:
             raise Exception("Invalid length encoding: {}".format(length_encoding))
@@ -287,77 +302,21 @@ class KLV(object):
         more_to_process = True
         while more_to_process:
 
-            # Data we will collect
-            key = None  # will be int for 1,2,4-byte keys and bytes for 16-byte keys
-            length = None  # type: int
-            value = None  # type: bytes
-
-            # Retrieve Key
-            if key_encoding in KEY_FIXED_LENGTHS:
-                key = stream.read(key_encoding)
-                # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
-                if key == b'':
-                    more_to_process = False
-                    continue
-            else:
-                assert key_encoding == KEY_ENCODING_BER_OID
-                # READ KEY AS BER-OID
-                # raise Exception("HAVE NOT YET IMPLEMENTED BER-OID KEY ENCODING")
-                key_buffer = []
-                more_key = True
-                while more_key:
-                    a_byte = stream.read(1)
-                    key_buffer.append(a_byte)
-                    if a_byte & 0b10000000 == 0:  # last byte
-                        more_key = False
-                key = 0
-                for i, a_byte in enumerate(key_buffer):
-                    key = key | (a_byte & 0b01111111)
-                    if a_byte & 0b10000000 != 0:  # more bytes to go
-                        key <<= 7
-
-
-                # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
-                # if key == b'':
-                #     more_to_process = False
-                #     continue
-
-            # Convert key from bytes to int?
-            if key_encoding in KEY_ENCODINGS_AS_INTS:
-                key = int.from_bytes(key, byteorder='big', signed=False)
-
-            # Compute Length
-            if length_encoding in (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES):
-                length = stream.read(length_encoding)
-                length = int.from_bytes(length, byteorder='big', signed=False)
-            else:
-                assert length_encoding == LENGTH_BER
-                ber = stream.read(1)
-                ber = int.from_bytes(ber, byteorder='big', signed=False)
-                if ber & 0b10000000 != 0:  # High bit set
-                    ber &= ~ 0b10000000  # clear high bit
-                    length = stream.read(ber)
-                    length = int.from_bytes(length, byteorder='big', signed=False)
-                else:
-                    length = ber
-
-            # Collect value
+            # Parse Key, Length, Value
+            key = KLV.static_parse_key(stream, key_encoding=key_encoding)
+            length = KLV.static_parse_length(stream, length_encoding=length_encoding)
             value = stream.read(length)
 
+            # Raise exception if we don't get all the value bytes we expected?
+
             # Found a Key/Value pair
-            yield KLV(key=key, value=value, key_encoding=key_encoding, length_encoding=length_encoding)
-
-        # Nothing left to parse
-        return
-
-
-    @staticmethod
-    def parse(source, key_encoding, length_encoding):
-        return next(KLV.parse_continually(source, key_encoding, length_encoding))
-
+            if key is None or length is None or length != len(value):
+                more_to_process = False
+            else:
+                yield KLV(key=key, value=value, key_encoding=key_encoding, length_encoding=length_encoding)
 
     @staticmethod
-    def parse_into_dict(source, payload_defs_dictionary):
+    def parse_into_dict(source, payload_defs_dictionary) -> dict:
         """
         Parses the source according to the definition provided in the
         provided dictionary.  The source will continue to be parsed
@@ -405,18 +364,20 @@ class KLV(object):
 
                 # Now, how do we process the field
                 eval_technique = field_defs.get(fkey, {}).get("eval")
-                if eval_technique is not None:
+                if eval_technique is not None and callable(eval_technique):
                     fval = eval_technique(fval)
+                    field["value"] = fval
                 else:
                     format = field_defs.get(fkey, {}).get("format")
                     if format is not None:
                         val = KLV.static_bytes_to_format(fval, format)
                         if val is not None:
                             fval = val
+                            field["value"] = fval
                         del val
 
                 # Value (possibly converted from bytes)
-                field["value"] = fval
+                # field["value"] = fval
 
                 # Is there a natural way to read this data
                 natural_technique = field_defs.get(fkey, {}).get("natural")
@@ -434,6 +395,11 @@ class KLV(object):
     @staticmethod
     def static_parse_key(source, key_encoding):
 
+        if key_encoding not in KEY_VALID_ENCODINGS:
+            raise Exception("Invalid key length or encoding: {}".format(key_encoding))
+
+        key = None
+
         # Input
         stream = None  # type: io.IOBase
         if isinstance(source, io.IOBase):
@@ -443,38 +409,76 @@ class KLV(object):
 
         # Retrieve Key
         if key_encoding in KEY_FIXED_LENGTHS:
-            key = stream.read(key_encoding)
-            # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
-            if key == b'':
-                return
+            key_bytes = stream.read(key_encoding)
+            if key_bytes == b'': return
+
+            # Convert key from bytes to int?
+            if key_encoding in KEY_ENCODINGS_AS_INTS:
+                key = int.from_bytes(key_bytes, byteorder=BIG_ENDIAN, signed=False)
+            else:
+                key = key_bytes
+            del key_bytes
+
         else:
             assert key_encoding == KEY_ENCODING_BER_OID
-            # READ KEY AS BER-OID
-            # raise Exception("HAVE NOT YET IMPLEMENTED BER-OID KEY ENCODING")
-            key_buffer = []
-            more_key = True
-            while more_key:
-                a_byte = stream.read(1)
-                if a_byte == b'':
-                    return
-                key_buffer.append(a_byte)
-                if a_byte & 0b10000000 == 0:  # last byte
-                    more_key = False
+
             key = 0
-            for i, a_byte in enumerate(key_buffer):
-                key = key | (a_byte & 0b01111111)
-                if a_byte & 0b10000000 != 0:  # more bytes to go
-                    key <<= 7
+            while True:
+                a_byte = stream.read(1)
+                if a_byte == b'': return
+                a_byte = int.from_bytes(a_byte, byteorder=BIG_ENDIAN, signed=False)
+
+                key |= (a_byte & 0b01111111)  # Tack on the 7 low bits
+                if a_byte & 0b10000000 == 0:  # If bit 8 is not set, we're done
+                    break
+                else:
+                    key <<= 7  # Else shift left and get another byte
+
+        return key
 
 
-                    # FIRST READ OPERATION. IF EMPTY, THEN STREAM IS CLOSED
-                    # if key == b'':
-                    #     more_to_process = False
-                    #     continue
+    @staticmethod
+    def static_parse_length(source, length_encoding):
 
-        # Convert key from bytes to int?
-        if key_encoding in KEY_ENCODINGS_AS_INTS:
-            key = int.from_bytes(key, byteorder='big', signed=False)
+        if length_encoding not in LENGTH_VALID_ENCODINGS:
+            raise Exception("Invalid length encoding: {}".format(length_encoding))
+
+        length = None  # type: int
+
+        # Input
+        stream = None  # type: io.IOBase
+        if isinstance(source, io.IOBase):
+            stream = source
+        elif isinstance(source, bytes):
+            stream = io.BytesIO(source)
+
+        if length_encoding in (LENGTH_1_BYTE, LENGTH_2_BYTES, LENGTH_4_BYTES):
+
+            length_bytes = stream.read(length_encoding)
+            if length_bytes == b'': return
+            length = int.from_bytes(length_bytes, byteorder=BIG_ENDIAN, signed=False)
+            del length_bytes
+
+        else:
+            assert length_encoding == LENGTH_BER
+
+            ber_bytes = stream.read(1)  # BER byte: number of following bytes
+            if ber_bytes == b'': return
+            ber = int.from_bytes(ber_bytes, byteorder=BIG_ENDIAN, signed=False)
+            del ber_bytes
+
+            if ber & 0b10000000 != 0:  # Is high bit set?
+                ber &= ~ 0b10000000  # clear high bit
+
+                length_bytes = stream.read(ber)
+                if length_bytes == b'': return
+                length = int.from_bytes(length_bytes, byteorder=BIG_ENDIAN, signed=False)
+                del length_bytes
+
+            else:
+                length = ber
+
+        return length
 
 
 key = 127
@@ -484,19 +488,20 @@ print(key, key2)
 
 key = 144
 key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+print(key, key2)
 
 key = 23298
 key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
+key2 = KLV.static_parse_key(key_bytes, KEY_ENCODING_BER_OID)
+print(key, key2)
 
-sys.exit(3)
-
-
-
+# sys.exit(3)
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
 UAS_PAYLOAD_DICTIONARY = {
     "top_level_key": UAS_KEY,
-    "key_encoding": KEY_ENCODING_1_BYTE,
+    "key_encoding": KEY_ENCODING_BER_OID,
     "length_encoding": LENGTH_BER,
     "documentation": "MISB ST 0601.8, 23 October 2014, UAS Datalink Local Set",
     "fields": {
@@ -897,27 +902,27 @@ UAS_PAYLOAD_DICTIONARY = {
 
 # sys.exit(3)
 # KLV_EXAMPLE_TAG_47_FLAGS_as_bytes
-# with open("out.klv", "rb") as f:
-#     for key, value in parse_continually(f, 16, LENGTH_BER):
-for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
-    # for key, value in parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
-    # for key, value in parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+with open("out.klv", "rb") as f:
+    for klv in KLV.parse_continually(f, 16, LENGTH_BER):
+# for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+# for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
+# for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
     # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
-    print("KLV:", klv)
-    key = klv.key
-    value = klv.value
-    if key == UAS_KEY:
-        print("RECEIVED UAS PAYLOAD:", value)
-        payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
-        print("\tPAYLOAD:", payload)
-        pprint(payload)
+        print("KLV:", klv)
+        key = klv.key
+        value = klv.value
+        if key == UAS_KEY:
+            print("RECEIVED UAS PAYLOAD:", value)
+            payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
+            print("\tPAYLOAD:", payload)
+            pprint(payload)
 
-        klvs = [klv for klv in KLV.parse_continually(value,
-                                                     key_encoding=UAS_PAYLOAD_DICTIONARY["key_encoding"],
-                                                     length_encoding=UAS_PAYLOAD_DICTIONARY["length_encoding"])]
-        klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
-        print("KLVTOP:", klvtop)
+            klvs = [klv for klv in KLV.parse_continually(value,
+                                                         key_encoding=UAS_PAYLOAD_DICTIONARY["key_encoding"],
+                                                         length_encoding=UAS_PAYLOAD_DICTIONARY["length_encoding"])]
+            klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+            print("KLVTOP:", klvtop)
 
-    else:
-        print("RECEIVED UNKNOWN KEY:", key)
-        print("\tUNKNOWN PAYLOAD:", value)
+        else:
+            print("RECEIVED UNKNOWN KEY:", key)
+            print("\tUNKNOWN PAYLOAD:", value)
