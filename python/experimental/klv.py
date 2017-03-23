@@ -34,15 +34,25 @@ KLV_EXAMPLE_ICING_DETECTED_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPL
 
 KLV_EXAMPLE_TAG_6_OUT_OF_RANGE = """
 06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
-10
+0E
 02 08 00 04 60 50 58 4E 01 80
 06 02 80 00
 """
 KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_6_OUT_OF_RANGE.split()])
 
-KLV_EXAMPLE_TAG_47_FLAGS = """
+
+KLV_EXAMPLE_TAG_13_OUT_OF_RANGE = """
 06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
 10
+02 08 00 04 60 50 58 4E 01 80
+0D 04 80 00 00 00
+"""
+KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_13_OUT_OF_RANGE.split()])
+
+
+KLV_EXAMPLE_TAG_47_FLAGS = """
+06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
+0E
 02 08 00 04 60 50 58 4E 01 80
 2F 01 15
 """
@@ -82,19 +92,24 @@ class KLV(object):
                  value=None,
                  key_encoding=None,
                  length_encoding=None,
-                 value_format=None):
+                 value_format=None,
+                 natural_value=None,
+                 definition: dict = None):
 
-        self.key = key
-        self.value = value
-        self.key_encoding = key_encoding or KEY_ENCODING_BER_OID
-        self.length_encoding = length_encoding or LENGTH_BER
-        self.value_format = value_format
+        self.definition = definition or {}
+        self.key = key or self.definition.get("key")
+        self.value = value or self.definition.get("value")
+        self.key_encoding = key_encoding or self.definition.get("key_encoding") or KEY_ENCODING_BER_OID
+        self.length_encoding = length_encoding or self.definition.get("length_encoding") or LENGTH_BER
+        self.value_format = value_format or self.definition.get("format")
+        if natural_value is not None:
+            self.natural_value = natural_value
 
-        # self.to_natural = None  # type: callable
-        # self.from_natural = None  # type: callable
+            # self.to_natural = self.definition.get("natural")  # type: callable
+            # self.from_natural = self.definition.get("from_natural")  # type: callable
 
     def __str__(self) -> str:
-        return "KLV(key=({}), length={}, value={}, bytes=({}))"\
+        return "KLV(key=({}), length={}, value={}, bytes=({}))" \
             .format(' '.join('{:02X}'.format(x) for x in self.key),
                     self.length,
                     self.value,
@@ -110,6 +125,20 @@ class KLV(object):
 
     def __len__(self) -> int:
         return self.length
+
+    @property
+    def natural_value(self):
+        to_nv_func = self.definition.get("natural")
+        if callable(to_nv_func):
+            return to_nv_func(self.value, None)
+        else:
+            return self.value
+
+    @natural_value.setter
+    def natural_value(self, nv):
+        from_nv_func = self.definition.get("from_natural")
+        if callable(from_nv_func):
+            self.value = from_nv_func(nv)
 
     @property
     def length(self) -> int:
@@ -274,7 +303,6 @@ class KLV(object):
     def parse(source, key_encoding, length_encoding) -> "KLV":
         return next(KLV.parse_continually(source, key_encoding, length_encoding))
 
-
     @staticmethod
     def parse_continually(source, key_encoding, length_encoding) -> typing.Iterator["KLV"]:
         """
@@ -318,8 +346,10 @@ class KLV(object):
             # Raise exception if we don't get all the value bytes we expected?
 
             # Found a Key/Value pair
-            if key is None or length is None or length != len(value):
+            if key is None or length is None:
                 more_to_process = False
+            elif length != len(value):
+                raise Exception("Expected {} bytes but got {}".format(length, len(value)))
             else:
                 yield KLV(key=key, value=value, key_encoding=key_encoding, length_encoding=length_encoding)
 
@@ -334,8 +364,8 @@ class KLV(object):
         :param payload_defs_dictionary:
         :return:
         """
-        key_encoding = payload_defs_dictionary["key_encoding"]
-        length_encoding = payload_defs_dictionary["length_encoding"]
+        key_encoding = payload_defs_dictionary["payload_key_encoding"]
+        length_encoding = payload_defs_dictionary["payload_length_encoding"]
         field_defs = payload_defs_dictionary["fields"]
 
         # Make the source a stream
@@ -396,7 +426,15 @@ class KLV(object):
                 if units:
                     field["units"] = units
 
-            vals[fkey] = field
+            # If key already exists, make it a list of values
+            if fkey in vals:
+                v = vals[fkey]
+                if isinstance(v, list):
+                    v.append(field)  # Add to pre-existing list
+                else:
+                    vals[fkey] = [v, field]  # Start new list
+            else:
+                vals[fkey] = field
 
         return vals
 
@@ -444,7 +482,6 @@ class KLV(object):
 
         return key
 
-
     @staticmethod
     def static_parse_length(source, length_encoding):
 
@@ -489,12 +526,42 @@ class KLV(object):
         return length
 
 
+class ContainerKLV(KLV):
+    def __init__(self, payload_dict: dict, *kargs, **kwargs):
+        kwargs["key"] = payload_dict["top_level_key"]
+        kwargs["key_encoding"] = payload_dict["top_level_key_encoding"]
+        kwargs["length_encoding"] = payload_dict["top_level_length_encoding"]
+        super().__init__(*kargs, **kwargs)
+        self.payload_dict = payload_dict
+
+    def add_payload(self, key, value=None, natural_value=None):
+        if self.value is None:
+            self.value = []
+        elif not isinstance(self.value, list):
+            self.value = [self.value]
+
+        field_def = self.payload_dict["fields"].get(key, {})  # type: dict
+        payload_key_encoding = field_def.get("key_encoding") or \
+                               self.payload_dict.get("payload_key_encoding", KEY_ENCODING_BER_OID)
+        payload_length_encoding = field_def.get("length_encoding") or \
+                                  self.payload_dict.get("payload_length_encoding", LENGTH_BER)
+        klv = KLV(key=key,
+                  key_encoding=payload_key_encoding,
+                  length_encoding=payload_length_encoding,
+                  value=value,
+                  natural_value=natural_value,
+                  definition=field_def
+                  )
+        self.value.append(klv)
+
 
 UAS_KEY = b'\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00'
 UAS_PAYLOAD_DICTIONARY = {
     "top_level_key": UAS_KEY,
-    "key_encoding": KEY_ENCODING_BER_OID,
-    "length_encoding": LENGTH_BER,
+    "top_level_key_encoding": KEY_ENCODING_16_BYTES,
+    "top_level_length_encoding": LENGTH_BER,
+    "payload_key_encoding": KEY_ENCODING_BER_OID,
+    "payload_length_encoding": LENGTH_BER,
     "documentation": "MISB ST 0601.8, 23 October 2014, UAS Datalink Local Set",
     "fields": {
         2: {"name": "UNIX Time Stamp",
@@ -514,19 +581,19 @@ UAS_PAYLOAD_DICTIONARY = {
             "format": "uint16",
             "natural": lambda x, b: 360.0 * (x / 0xFFFF),
             "units": "degrees",
-            "from_natural": lambda x: int((x / 360.0 * 0xFFFF))  # .to_bytes(2, byteorder=BIG_ENDIAN, signed=False)
+            "from_natural": lambda x: int((x / 360.0 * 0xFFFF))
             },
         6: {"name": "Platform Pitch Angle",
             "size": 2,
             "format": "int16",
-            "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+            "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if x != -0x8000 else "out of range",
             "units": "degrees",
             "from_natural": lambda x: int(x / 2.0 / 20.0 * 0xFFFe)
             },
         7: {"name": "Platform Roll Angle",
             "size": 2,
             "format": "int16",
-            "natural": lambda x, b: 2 * 50.0 * (x / 0xFFFF) if b != b'\x80\x00' else "out of range",
+            "natural": lambda x, b: 2 * 50.0 * (x / 0xFFFF) if x != -0x8000 else "out of range",
             "units": "degrees"
             },
         8: {"name": "Platform True Airspeed",
@@ -552,15 +619,13 @@ UAS_PAYLOAD_DICTIONARY = {
         13: {"name": "Sensor Latitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         14: {"name": "Sensor Longitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         15: {"name": "Sensor True Altitude",
@@ -615,15 +680,13 @@ UAS_PAYLOAD_DICTIONARY = {
         23: {"name": "Frame Center Latitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         24: {"name": "Frame Center Longitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         25: {"name": "Frame Center Elevation",
@@ -635,49 +698,49 @@ UAS_PAYLOAD_DICTIONARY = {
         26: {"name": "Offset Corner Latitude Point 1",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         27: {"name": "Offset Corner Longitude Point 1",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         28: {"name": "Offset Corner Latitude Point 2",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         29: {"name": "Offset Corner Longitude Point 2",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         30: {"name": "Offset Corner Latitude Point 3",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         31: {"name": "Offset Corner Longitude Point 3",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         32: {"name": "Offset Corner Latitude Point 4",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         33: {"name": "Offset Corner Longitude Point 4",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != b'\x80\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 0.075 * (x / 0xFFFe) if x != -0x8000 else "error",
              "units": "degrees"
              },
         34: {"name": "Icing Detected"},
@@ -701,15 +764,13 @@ UAS_PAYLOAD_DICTIONARY = {
         40: {"name": "Target Location Latitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         41: {"name": "Target Location Longitude",
              "size": 4,
              "format": "int32",
-             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe)
-             if x != b'\x80\x00\x00\x00\x00\x00\x00\x00' else "error",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
              "units": "degrees"
              },
         42: {"name": "Target Location Elevation",
@@ -765,19 +826,19 @@ UAS_PAYLOAD_DICTIONARY = {
         50: {"name": "Platform Angle of Attack",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if x != -0x8000 else "out of range",
              "units": "degrees"
              },
         51: {"name": "Platform Vertical Speed",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFe) if x != -0x8000 else "out of range",
              "units": "meters / second"
              },
         52: {"name": "Platform Sideslip Angle",
              "size": 2,
              "format": "int16",
-             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if b != b'\x80\x00' else "out of range",
+             "natural": lambda x, b: 2 * 20.0 * (x / 0xFFFe) if x != -0x8000 else "out of range",
              "units": "degrees"
              },
         53: {"name": "Airfield Barometric Pressure",
@@ -825,44 +886,62 @@ UAS_PAYLOAD_DICTIONARY = {
                                       "Substation Number": (x >> 8) & 0b00001111,
                                       "Weapon Type": (x >> 4) & 0b00001111,
                                       "Weapon Variant": x & 0b00001111
-                                      }
-             # TODO: LEFT OFF HERE - INCOMPLETE - CAN YOU HAVE MULTIPLE TAG 60 DATA POINTS?
+                                      },
+             "from_natural": lambda x:
+             ((x[0] & 0b00001111) << 12) |
+             ((x[1] & 0b00001111) << 8) |
+             ((x[2] & 0b00001111) << 4) |
+             ((x[3] & 0b00001111))
+             # receives tuple (a,b,c,d) where a = Station Number, b = Substation Number, etc
              }
     }
 }  # end UAS_PAYLOAD_DICTIONARY
 
-
-
-klv0 = KLV(key=UAS_KEY, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
-klv0.value = []
-
-klv1 = KLV(key=5, value=0x71c, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
-klv0.value.append(klv1)
-
-
-field_def = UAS_PAYLOAD_DICTIONARY["fields"][6]
-vb = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
-# klv = build_klv(6, vb, key_encoding_1, LENGTH_BER, value_format="int16")
-
-klv2 = KLV(key=6, value=vb, value_format="int16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
-klv0.value.append(klv2)
-
-sta_num = 1
-sub_num = 2
-wpn_typ = 3
-wpn_var = 4
-v60 = (sta_num << 12) | (sub_num << 8) | (wpn_typ << 4) |  wpn_var
-klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
-klv0.value.append(klv60)
-
-print("KLV0:", klv0)
-print("KLV0:", ' '.join(["{:02X}".format(b) for b in klv0.klv_bytes()]))
-# klv00 = KLV.parse(klv0.klv_bytes(), key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
-# print("KLV00", klv00)
-klvd = KLV.parse_into_dict(klv0.value_bytes(), UAS_PAYLOAD_DICTIONARY)
-pprint(klvd)
-sys.exit(5)
-
+# klv0 = KLV(key=UAS_KEY, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+# klv0 = ContainerKLV(payload_dict=UAS_PAYLOAD_DICTIONARY)
+# klv0.value = []
+#
+# # klv5 = KLV(key=5, value=0x71c, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+# # field5 = UAS_PAYLOAD_DICTIONARY["fields"][5]
+# # klv5 = KLV(key=5, definition=field5, natural_value=9.997711146715496)
+# # klv0.value.append(klv5)
+# klv0.add_payload(5, value=0x71c)
+# # print("KLV0:", klv0)
+# # sys.exit(6)
+#
+# field_def = UAS_PAYLOAD_DICTIONARY["fields"][6]
+# val = field_def["from_natural"](-0.4315317239906003)  # 0x08B8
+# # klv = build_klv(6, vb, key_encoding_1, LENGTH_BER, value_format="int16")
+#
+# klv2 = KLV(key=6, value=val, value_format="int16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+# # klv0.value.append(klv2)
+# klv0.add_payload(key=6, value=val)
+# klv0.add_payload(key=6, natural_value=-0.4315317239906003)
+#
+# sta_num = 1
+# sub_num = 2
+# wpn_typ = 3
+# wpn_var = 4
+# v60 = (sta_num << 12) | (sub_num << 8) | (wpn_typ << 4) | wpn_var
+# klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+# # klv0.value.append(klv60)
+# klv0.add_payload(key=60, natural_value=(sta_num, sub_num, wpn_typ, wpn_var))
+#
+# sta_num = 10
+# sub_num = 20
+# wpn_typ = 30
+# wpn_var = 40
+# v60 = (sta_num << 12) | (sub_num << 8) | (wpn_typ << 4) | wpn_var
+# klv60 = KLV(key=60, value=v60, value_format="uint16", length_encoding=LENGTH_BER, key_encoding=KEY_ENCODING_BER_OID)
+# # klv0.value.append(klv60)
+#
+# print("KLV0:", klv0)
+# print("KLV0:", ' '.join(["{:02X}".format(b) for b in klv0.klv_bytes()]))
+# # klv00 = KLV.parse(klv0.klv_bytes(), key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+# # print("KLV00", klv00)
+# klvd = KLV.parse_into_dict(klv0.value_bytes(), UAS_PAYLOAD_DICTIONARY)
+# pprint(klvd)
+# sys.exit(5)
 
 # key = 127
 # key_bytes = KLV.static_key_bytes(key, KEY_ENCODING_BER_OID)
@@ -949,12 +1028,13 @@ sys.exit(5)
 
 # sys.exit(3)
 # KLV_EXAMPLE_TAG_47_FLAGS_as_bytes
-with open("out.klv", "rb") as f:
-    for klv in KLV.parse_continually(f, 16, LENGTH_BER):
-# for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
-# for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
+# with open("out.klv", "rb") as f:
+#     for klv in KLV.parse_continually(f, 16, LENGTH_BER):
+for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+        # for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
 # for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
-    # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
+# for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+        # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
         print("KLV:", klv)
         key = klv.key
         value = klv.value
@@ -965,8 +1045,8 @@ with open("out.klv", "rb") as f:
             pprint(payload)
 
             klvs = [klv for klv in KLV.parse_continually(value,
-                                                         key_encoding=UAS_PAYLOAD_DICTIONARY["key_encoding"],
-                                                         length_encoding=UAS_PAYLOAD_DICTIONARY["length_encoding"])]
+                                                         key_encoding=UAS_PAYLOAD_DICTIONARY["payload_key_encoding"],
+                                                         length_encoding=UAS_PAYLOAD_DICTIONARY["payload_length_encoding"])]
             klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
             print("KLVTOP:", klvtop)
 
