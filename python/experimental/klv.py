@@ -40,7 +40,6 @@ KLV_EXAMPLE_TAG_6_OUT_OF_RANGE = """
 """
 KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_6_OUT_OF_RANGE.split()])
 
-
 KLV_EXAMPLE_TAG_13_OUT_OF_RANGE = """
 06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
 10
@@ -49,7 +48,6 @@ KLV_EXAMPLE_TAG_13_OUT_OF_RANGE = """
 """
 KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_13_OUT_OF_RANGE.split()])
 
-
 KLV_EXAMPLE_TAG_47_FLAGS = """
 06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
 0E
@@ -57,6 +55,14 @@ KLV_EXAMPLE_TAG_47_FLAGS = """
 2F 01 15
 """
 KLV_EXAMPLE_TAG_47_FLAGS_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_47_FLAGS.split()])
+
+KLV_EXAMPLE_TAG_63_FLAGS = """
+06 0E 2B 34 02 0B 01 01  0E 01 03 01 01 00 00 00
+0D
+02 08 00 04 60 50 58 4E 01 80
+3F 01 06
+"""  # Sensor Field of View Name
+KLV_EXAMPLE_TAG_63_FLAGS_as_bytes = bytes([int(h, base=16) for h in KLV_EXAMPLE_TAG_63_FLAGS.split()])
 
 # Permissible Length Encodings
 LENGTH_1_BYTE = 1  # 1 byte
@@ -893,7 +899,116 @@ UAS_PAYLOAD_DICTIONARY = {
              ((x[2] & 0b00001111) << 4) |
              ((x[3] & 0b00001111))
              # receives tuple (a,b,c,d) where a = Station Number, b = Substation Number, etc
-             }
+             },
+        61: {"name": "Weapon Fired",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: {"Station Number": (x >> 12) & 0b00001111,
+                                      "Substation Number": (x >> 8) & 0b00001111,
+                                      "Weapon Type": (x >> 4) & 0b00001111,
+                                      "Weapon Variant": x & 0b00001111
+                                      },
+             "from_natural": lambda x:
+             ((x[0] & 0b00001111) << 12) |
+             ((x[1] & 0b00001111) << 8) |
+             ((x[2] & 0b00001111) << 4) |
+             ((x[3] & 0b00001111))
+             # receives tuple (a,b,c,d) where a = Station Number, b = Substation Number, etc
+             },
+        62: {"name": "Laser PRF Code",
+             "size": 2,
+             "format": "uint16"},
+        63: {"name": "Sensor Field of View Name",
+             "size": 1,
+             "format": "uint8",
+             "natural": lambda x, b: {
+                 0: "Ultranarrow",
+                 1: "Narrow",
+                 2: "Medium",
+                 3: "Wide",
+                 4: "Ultrawide",
+                 5: "Narrow Medium",
+                 6: "2x Ultranarrow",
+                 7: "4x Ultranarrow" }.get(x)
+             },
+        64: {"name": "Platform Magnetic Heading",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 360.0 * (x / 0xFFFF),
+             "units": "degrees",
+             "from_natural": lambda x: int((x / 360.0 * 0xFFFF))
+             },
+        65: {"name": "UAS LS Version Number",
+             "size": 1,
+             "format": "uint8"},
+        66: {"name": "Target Location Covariance Matrix"},
+        67: {"name": "Alternate Platform Latitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 90.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
+             "units": "degrees"
+             },
+        68: {"name": "Alternate Platform Longitude",
+             "size": 4,
+             "format": "int32",
+             "natural": lambda x, b: 2 * 180.0 * (x / 0xFFFFFFFe) if x != -0x80000000 else "error",
+             "units": "degrees"
+             },
+        69: {"name": "Alternate Platform Altitude",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        70: {"name": "Alternate Platform Name",
+             "max_size": 127,
+             "format": "ISO 646"
+             },
+        71: {"name": "Alternate Platform Heading",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: 360.0 * (x / 0xFFFF),
+             "units": "degrees",
+             "from_natural": lambda x: int((x / 360.0 * 0xFFFF))
+             },
+        72: {"name": "Event Start Time - UTC",
+            "size": 8,
+            "format": "uint64",
+            # Timestamp is in microseconds - convert to seconds for Python
+            "natural": lambda x, b: datetime.datetime.utcfromtimestamp(x / 1000 / 1000).strftime('%Y-%m-%dT%H:%M:%SZ')
+            },
+        73: {"name":"RVT Local Set"},
+        74: {"name":"VMTI Data Set"},
+        75: {"name": "Sensor Ellipsoid Height",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        76: {"name": "Alternate Platform Ellipsoid Height",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        77: {"name": "Operational Mode",
+             "size": 1,
+             "format": "uint8",
+             "natural": lambda x, b: {
+                 0: "Other",
+                 1: "Operational",
+                 2: "Training",
+                 3: "Exercise",
+                 4: "Maintenance",
+                 5: "Test" }.get(x)
+             },
+        78: {"name": "Frame Center Height Above Ellipsoid",
+             "size": 2,
+             "format": "uint16",
+             "natural": lambda x, b: -900.0 + 19900.0 * (x / 0xFFFF),
+             "units": "meters"
+             },
+        # TODO: LEFT OFF HERE
     }
 }  # end UAS_PAYLOAD_DICTIONARY
 
@@ -1030,26 +1145,27 @@ UAS_PAYLOAD_DICTIONARY = {
 # KLV_EXAMPLE_TAG_47_FLAGS_as_bytes
 # with open("out.klv", "rb") as f:
 #     for klv in KLV.parse_continually(f, 16, LENGTH_BER):
-for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
-        # for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
-# for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
-# for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
-        # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
-        print("KLV:", klv)
-        key = klv.key
-        value = klv.value
-        if key == UAS_KEY:
-            print("RECEIVED UAS PAYLOAD:", value)
-            payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
-            print("\tPAYLOAD:", payload)
-            pprint(payload)
+# for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_63_FLAGS_as_bytes, 16, LENGTH_BER):
+    # for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
+    # for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+    # for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
+    # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
+    print("KLV:", klv)
+    key = klv.key
+    value = klv.value
+    if key == UAS_KEY:
+        print("RECEIVED UAS PAYLOAD:", value)
+        payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
+        print("\tPAYLOAD:", payload)
+        pprint(payload)
 
-            klvs = [klv for klv in KLV.parse_continually(value,
-                                                         key_encoding=UAS_PAYLOAD_DICTIONARY["payload_key_encoding"],
-                                                         length_encoding=UAS_PAYLOAD_DICTIONARY["payload_length_encoding"])]
-            klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
-            print("KLVTOP:", klvtop)
+        klvs = [klv for klv in KLV.parse_continually(value,
+                                                     key_encoding=UAS_PAYLOAD_DICTIONARY["payload_key_encoding"],
+                                                     length_encoding=UAS_PAYLOAD_DICTIONARY["payload_length_encoding"])]
+        klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+        print("KLVTOP:", klvtop)
 
-        else:
-            print("RECEIVED UNKNOWN KEY:", key)
-            print("\tUNKNOWN PAYLOAD:", value)
+    else:
+        print("RECEIVED UNKNOWN KEY:", key)
+        print("\tUNKNOWN PAYLOAD:", value)
