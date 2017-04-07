@@ -12,8 +12,11 @@ def main():
         first_question = input("Enter a yes/no question where 'yes' would lead me to your guess: ")
         knowledge = {"question":first_question, "yes":right_answer}
 
-    known_items = sorted(extract_known_items(knowledge))
-    print("Known items:", ", ".join(known_items))
+
+    print("Think of something either from the list below (to check my intelligence) ")
+    print("or something else to help me build my understanding.")
+    print("\tKnown items:", ", ".join(extract_known_items(knowledge)))
+    print("Ready?  Here we go...")
 
     prompt_knowledge_node(knowledge)
     print(knowledge)
@@ -58,13 +61,13 @@ def prompt_knowledge_node(knowledge):
             right_answer = input("What was the right answer? ")
             new_question = input("Enter a yes/no question that could differentiate between a {} and a {}: "
                                  .format(guess, right_answer))
-            new_right_resp = input("Which response, yes or no, would point to the {}? ".format(right_answer))
-            if new_right_resp.lower() in ("y", "yes"):
+            new_right_resp = input("Which response, yes or no, would point to the {}? ".format(right_answer)).lower()
+            if new_right_resp in ("y", "yes"):
                 resp_yes = right_answer
                 resp_no = guess
             else:
-                resp_yes = right_answer
-                resp_no = guess
+                resp_yes = guess
+                resp_no = right_answer
             node = {
                 "question": new_question,
                 "yes": resp_yes,
