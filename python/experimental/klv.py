@@ -399,7 +399,9 @@ class KLV(object):
             expected_size = field_defs.get(fkey, {}).get("size")
             if expected_size is not None and len(fval) != expected_size:
                 msg = "Error: For key={}, expected field of size {} but received field of size {}. Field: {}" \
-                    .format(fkey, expected_size, len(fval), fval)
+                    .format(fkey, expected_size, len(fval),
+                            ' '.join(["{:02X}".format(b) for b in fval])
+                            )
                 print(msg, file=sys.stderr)
                 field["error"] = msg
 
@@ -1145,27 +1147,27 @@ UAS_PAYLOAD_DICTIONARY = {
 # KLV_EXAMPLE_TAG_47_FLAGS_as_bytes
 # with open("out.klv", "rb") as f:
 #     for klv in KLV.parse_continually(f, 16, LENGTH_BER):
-# for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
-for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_63_FLAGS_as_bytes, 16, LENGTH_BER):
+for klv in KLV.parse_continually(KLV_EXAMPLE_1_as_bytes, 16, LENGTH_BER):
+# for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_63_FLAGS_as_bytes, 16, LENGTH_BER):
     # for klv in KLV.parse_continually(KLV_EXAMPLE_ICING_DETECTED_as_bytes, 16, LENGTH_BER):
     # for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_6_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
     # for klv in KLV.parse_continually(KLV_EXAMPLE_TAG_13_OUT_OF_RANGE_as_bytes, 16, LENGTH_BER):
     # for key, value in parse_continually(KLV_EXAMPLE_TAG_47_FLAGS_as_bytes, 16, LENGTH_BER):
-    print("KLV:", klv)
-    key = klv.key
-    value = klv.value
-    if key == UAS_KEY:
-        print("RECEIVED UAS PAYLOAD:", value)
-        payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
-        print("\tPAYLOAD:", payload)
-        pprint(payload)
+        print("KLV:", klv)
+        key = klv.key
+        value = klv.value
+        if key == UAS_KEY:
+            print("RECEIVED UAS PAYLOAD:", value)
+            payload = KLV.parse_into_dict(value, UAS_PAYLOAD_DICTIONARY)
+            print("\tPAYLOAD:", payload)
+            pprint(payload)
 
-        klvs = [klv for klv in KLV.parse_continually(value,
-                                                     key_encoding=UAS_PAYLOAD_DICTIONARY["payload_key_encoding"],
-                                                     length_encoding=UAS_PAYLOAD_DICTIONARY["payload_length_encoding"])]
-        klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
-        print("KLVTOP:", klvtop)
+            klvs = [klv for klv in KLV.parse_continually(value,
+                                                         key_encoding=UAS_PAYLOAD_DICTIONARY["payload_key_encoding"],
+                                                         length_encoding=UAS_PAYLOAD_DICTIONARY["payload_length_encoding"])]
+            klvtop = KLV(key=UAS_KEY, value=klvs, key_encoding=KEY_ENCODING_16_BYTES, length_encoding=LENGTH_BER)
+            print("KLVTOP:", klvtop)
 
-    else:
-        print("RECEIVED UNKNOWN KEY:", key)
-        print("\tUNKNOWN PAYLOAD:", value)
+        else:
+            print("RECEIVED UNKNOWN KEY:", key)
+            print("\tUNKNOWN PAYLOAD:", value)

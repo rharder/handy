@@ -1,0 +1,24 @@
+{
+    "yes": {
+        "yes": "frog",
+        "question": "Is it green?",
+        "no": {
+            "yes": "rabbit",
+            "question": "Is it alive?",
+            "no": "calculator"
+        }
+    },
+    "question": "Is it smaller than a breadbox?",
+    "no": {
+        "yes": {
+            "yes": "Jeep",
+            "question": "does it have four wheels",
+            "no": "elephant"
+        },
+        "question": "Is it gray?",
+        "no": {
+            "yes": "giraffe",
+            "question": "Does it have a long neck?"
+        }
+    }
+}

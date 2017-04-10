@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+from pprint import pprint
 
 
 def main():
@@ -19,7 +20,7 @@ def main():
     print("Ready?  Here we go...")
 
     prompt_knowledge_node(knowledge)
-    print(knowledge)
+    pprint(knowledge)
     with open("knowledge.txt", "w") as f:
         f.write(json.dumps(knowledge,  indent=4))
 
