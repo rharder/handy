@@ -1,0 +1,18 @@
+
+body {
+    background-color: #000000;
+}
+
+#teamseq {
+    font-size: xx-large;
+    border-radius: 10px;
+    background-color: #AADDAA;
+    margin: 2em;
+    padding: 2em;
+    /*display: none;*/
+    border-color: ##AAAADD;
+    border-width: thick;
+
+}
+
+
