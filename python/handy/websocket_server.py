@@ -3,6 +3,7 @@
 Easily subclassed websocket server.
 
 For example usage, see examples folder (also here: http://pastebin.com/xDSACmdV)
+Source: https://github.com/rharder/handy
 """
 import asyncio
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 A collection of functions and classes to help with tkinter.
+Source: https://github.com/rharder/handy
 """
 import tkinter as tk
 import tkinter.ttk as ttk

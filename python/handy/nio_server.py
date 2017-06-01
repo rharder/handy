@@ -1,5 +1,6 @@
 """
 Provides an easy-to-subclass Nonblocking network server using asyncio and coroutines.
+Source: https://github.com/rharder/handy
 """
 import asyncio
 import sys

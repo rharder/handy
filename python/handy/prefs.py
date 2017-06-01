@@ -1,5 +1,6 @@
 """
 Handles saving preferences between occurrences of running a script.
+Source: https://github.com/rharder/handy
 """
 
 import os

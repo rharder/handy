@@ -2,6 +2,7 @@
 Show upload progress using tqdm and aiohttp.
 
 PasteBin: http://pastebin.com/ksEfNJZN
+Source: https://github.com/rharder/handy
 """
 import os
 import time
