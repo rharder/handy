@@ -68,17 +68,17 @@ class FormattableTkStringVar(tk.StringVar):
         hex_label = tk.Label(frame, textvariable=self.hex)
     """
 
-    def __init__(self, str_format: str, var_list: [], **kwargs):
+    def __init__(self, str_format: str, vars, **kwargs):
         """
         Creates a bindable variable whose string format is up to date with the underlying variables.
         :param str str_format: the string format, eg, "Age: {}"
         :param var_list: the list of tk.xxxVar objects that feed into the string format
         """
         tk.StringVar.__init__(self, **kwargs)
-        self.__format = str_format
-        self.__vars = var_list
+        self._format = str_format
+        self._vars = [v for v in vars]
 
-        for v in var_list:
+        for v in self._vars:
             v.trace("w", self.var_changed)  # Bind to all underlying vars
 
         self.update_format()  # Set initial value of formatted string
@@ -87,8 +87,8 @@ class FormattableTkStringVar(tk.StringVar):
         self.update_format()  # Update with new value
 
     def update_format(self):
-        var_vals = [v.get() for v in self.__vars]  # Collect values for all vars
-        self.set(self.__format.format(*var_vals))  # Format string, unpacking the format(..) arguments
+        var_vals = [v.get() for v in self._vars]  # Collect values for all vars
+        self.set(self._format.format(*var_vals))  # Format string, unpacking the format(..) arguments
 
 
 class BindableTextArea(tk.scrolledtext.ScrolledText):

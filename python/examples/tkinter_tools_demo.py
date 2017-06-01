@@ -10,10 +10,10 @@ from handy.tkinter_tools import *
 
 
 def main():
-    demo_bindable_text_area()
+    # demo_bindable_text_area()
     demo_formattable_tkstringvar()
-    demo_bind_tk_attribute()
-    demo_bind_tk_method()
+    # demo_bind_tk_attribute()
+    # demo_bind_tk_method()
 
 
 def demo_bindable_text_area():
