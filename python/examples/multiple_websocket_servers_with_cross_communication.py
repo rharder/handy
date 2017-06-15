@@ -37,7 +37,7 @@ def main():
     loop.create_task(tim_srv.start())
 
     # Open web pages to test them
-    webtests = [9990, 9991, 9991, 9992, 9992]
+    webtests = [9990, 9991, 9992]
     for port in webtests:
         url = "http://www.websocket.org/echo.html?location=ws://localhost:{}".format(port)
         webbrowser.open(url)
@@ -51,7 +51,7 @@ def main():
         rnd_srv.broadcast_json(msg_dict)
         tim_srv.broadcast_json(msg_dict)
 
-    loop.call_later(17, _alert_all, "ALL YOUR BASE ARE BELONG TO US")
+    loop.call_later(17, _alert_all, "all your base are belong to us")
 
     # Run event loop
     try:
@@ -67,8 +67,10 @@ class CapitalizeEchoServer(WsServer):
     """ Echoes back to client whatever they sent, but capitalized. """
 
     async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
-        cap = ws_msg_from_client.data.upper()
-        ws.send_str(cap)
+        # print("RECVD", ws_msg_from_client)
+        if ws_msg_from_client.type == web.WSMsgType.TEXT:
+            cap = str(ws_msg_from_client.data).upper()
+            ws.send_str(cap)
 
 
 class RandomQuoteServer(WsServer):

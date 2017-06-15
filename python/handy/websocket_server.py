@@ -7,7 +7,7 @@ Source: https://github.com/rharder/handy
 """
 import asyncio
 
-import aiohttp
+import aiohttp  # pip install aiohttp  # Tested up to aiohttp==2.1.0
 import logging
 from aiohttp import web
 
@@ -67,7 +67,7 @@ class WsServer(object):
 
         start_msg = "{} listening on port {}".format(self.__class__.__name__, self.port)
         self.log.info(start_msg)
-        print(start_msg)
+        # print(start_msg)
 
     @asyncio.coroutine
     def close(self):
@@ -84,7 +84,7 @@ class WsServer(object):
             yield from ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
 
     @asyncio.coroutine
-    def websocket_handler(self, request: aiohttp.Request):
+    def websocket_handler(self, request: web.BaseRequest):
         """
         Handles the incoming websocket client connection and calls on_websocket()
         in order to hand off control to subclasses of the server.
@@ -113,13 +113,13 @@ class WsServer(object):
         The default behavior is to listen indefinitely for incoming messages from clients
         and call on_message() with each one.
         """
-        exc = None
-        while exc is None:
+        while True:
             try:
                 ws_msg = yield from ws.receive()  # type: aiohttp.WSMessage
-            except RuntimeError as exc:
-                pass
+            except RuntimeError as e:  # Socket closing throws RuntimeError
+                break
             else:
+                # Call on_message() if it got something
                 yield from self.on_message(ws=ws, ws_msg_from_client=ws_msg)
 
     @asyncio.coroutine

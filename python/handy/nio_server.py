@@ -10,6 +10,7 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 
+
 class NonblockingServer(metaclass=ABCMeta):
     """
     Nonblocking Server class to aid in the mechanics.
@@ -21,7 +22,6 @@ class NonblockingServer(metaclass=ABCMeta):
                  host: str = None,
                  connection_timeout: float = None,
                  verbosity: int = 0):
-                 # loop: asyncio.AbstractEventLoop = None):
         """
         Creates a new Nonblocking Server.
 
@@ -35,67 +35,19 @@ class NonblockingServer(metaclass=ABCMeta):
         self.port = port
         self.host = host
         self.connection_timeout = connection_timeout
-        # self.__loop = loop
         self.__server_running = False
-
 
     def __str__(self):
         return "{klass}({host}:{port})".format(
-                klass=self.__class__.__name__, port=self.port, host=self.host)
-    #
-    # @property
-    # def port(self) -> int:
-    #     return self.__port
-    #
-    # @port.setter
-    # def port(self, port: int):
-    #     """
-    #     Set the port on which to connect.  Raises an exception if server is already running.
-    #     :param int port:
-    #     """
-    #     if self.__server_running:
-    #         raise Exception("Cannot change port after server is started.")
-    #     self.__port = port
-    #
-    # @property
-    # def host(self) -> str:
-    #     return self.__host
-    #
-    # @host.setter
-    # def host(self, host: str):
-    #     """
-    #     Set the host with which to bind when listening.  Raises an exception if server is already running.
-    #     :param str host:
-    #     :return:
-    #     """
-    #     if self.__server_running:
-    #         raise Exception("Cannot change bound host after server is started.")
-    #     self.__host = host
-    #
-    # @property
-    # def connection_timeout(self):
-    #     return self.__connection_timeout
-    #
-    # @connection_timeout.setter
-    # def connection_timeout(self, connection_timeout):
-    #     self.__connection_timeout = connection_timeout
+            klass=self.__class__.__name__, port=self.port, host=self.host)
 
-    # @property
-    # def loop(self):
-    #     return self.__loop
-    #
-    # @loop.setter
-    # def loop(self, loop: asyncio.AbstractEventLoop):
-    #     self.__loop = loop
-
-    def start_listening(self, loop: asyncio.AbstractEventLoop=None):
+    def start_listening(self, loop: asyncio.AbstractEventLoop = None):
         """
         Attaches the server to an existing event loop, which presumably will later have
         loop.run_forever() called with other things attached to it.
 
         :param asyncio.AbstractEventLoop loop: the loop to attach
         """
-        # loop.run_until_complete(self.__listen_for_connection())
         loop = loop or asyncio.get_event_loop()
         loop.create_task(self.__listen_for_connection())
         self.loop = loop
@@ -182,7 +134,6 @@ class NonblockingServer(metaclass=ABCMeta):
                 print("error closing", file=sys.stderr)
                 pass
 
-    # @abstractmethod
     @asyncio.coroutine
     def handle_connection(self, client_reader: asyncio.StreamReader,
                           client_writer: asyncio.StreamWriter, user_dict: dict):
@@ -201,7 +152,6 @@ class NonblockingServer(metaclass=ABCMeta):
         """
         pass
 
-    # @abstractmethod
     @asyncio.coroutine
     def handle_exception(self,
                          exc: Exception,
@@ -232,7 +182,9 @@ class ExampleLineEchoNonblockingServer(NonblockingServer):
         return "{}, encoding={}".format(super().__str__(), ExampleLineEchoNonblockingServer.ENCODING)
 
     @asyncio.coroutine
-    def handle_connection(self, client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter,
+    def handle_connection(self,
+                          client_reader: asyncio.StreamReader,
+                          client_writer: asyncio.StreamWriter,
                           user_dict: dict):
         """
         Example of how to handle a new connection.
@@ -242,7 +194,7 @@ class ExampleLineEchoNonblockingServer(NonblockingServer):
         yield from client_writer.drain()  # Non-blocking
 
         from_client = None
-        while from_client != 'EOF':
+        while from_client != 'EOF':  # Magic kill word from client
             # Discussion: I think it might be a bug (or "feature") in the Python 3.4.3 I'm developing on
             # that there is not a proper error thrown with this readline or the following write.
             # There's a note here: https://github.com/aaugustin/websockets/issues/23
@@ -252,17 +204,25 @@ class ExampleLineEchoNonblockingServer(NonblockingServer):
             # somewhere inside Python's codebase.
             # from_client = yield from client_reader.readline()  # This should be OK, but it's not, strangely
             # from_client = yield from asyncio.shield(client_reader.readline())  # Also works
+            # from_client = yield from asyncio.ensure_future(client_reader.readline())  # Use this instead
 
-            from_client = yield from asyncio.async(client_reader.readline())  # Use this instead
+            from_client = yield from client_reader.readline()
 
-            from_client = from_client.decode('utf-8').strip()
-            print("Recvd: [{}]".format(from_client))
+            if from_client == b'':  # Connection probably closed
+                from_client = "EOF"
+            else:
+                from_client = from_client.decode('utf-8').strip()
+                print("Recvd: [{}]".format(from_client))
 
-            client_writer.write("{}\n".format(from_client).encode(ExampleLineEchoNonblockingServer.ENCODING))
-            yield from client_writer.drain()  # Non-blocking
+                response = "{}\n".format(from_client).encode(ExampleLineEchoNonblockingServer.ENCODING)
+                client_writer.write(response)
+                yield from client_writer.drain()  # Non-blocking
 
     @asyncio.coroutine
-    def handle_exception(self, exc: Exception, client_reader: asyncio.StreamWriter, client_writer: asyncio.StreamWriter,
+    def handle_exception(self,
+                         exc: Exception,
+                         client_reader: asyncio.StreamWriter,
+                         client_writer: asyncio.StreamWriter,
                          user_dict: dict):
 
         if type(exc) is asyncio.TimeoutError:
