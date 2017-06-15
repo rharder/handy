@@ -1,5 +1,6 @@
 """
 Show upload progress using tqdm and aiohttp.
+Example in tqio_upload_progress.py.
 
 PasteBin: http://pastebin.com/ksEfNJZN
 Source: https://github.com/rharder/handy
@@ -58,4 +59,5 @@ class tqio(io.BufferedReader):
     def close(self, *args, **kwargs):
         self.t.close()
         super().close()
+
 
