@@ -14,7 +14,7 @@ __license__ = "Public Domain"
 
 
 
-def bind_tk_attribute(widget, attr_name, tkvar):
+def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):
     """
     Helper function to bind an arbitrary tk widget attribute to a tk.xxxVar.
 
@@ -24,9 +24,13 @@ def bind_tk_attribute(widget, attr_name, tkvar):
         var = tk.StringVar()
         label = tk.Label(window, text="Change My Background")
         label.pack()
-        bind_tk_attribute(label, "bg", var)
+        bind_tk_var_to_tk_attribute(label, "bg", var)
         var.set("light blue")
         window.mainloop()
+
+    Equivalently calls the function:
+
+        label.configure({"bg": "light blue"})
 
     :param widget: the tk widget to be affected
     :param attr_name: the name of the attribute to bind
@@ -35,7 +39,7 @@ def bind_tk_attribute(widget, attr_name, tkvar):
     tkvar.trace("w", lambda _, __, ___, v=tkvar: widget.configure({attr_name: v.get()}))
 
 
-def bind_tk_method(func, tkvar):
+def bind_tk_var_to_method(func, tkvar):
     """
     Helper function to bind an arbitrary method to a tkvar value.
 
@@ -47,11 +51,42 @@ def bind_tk_method(func, tkvar):
         var.set("My New Title")
         window.mainloop()
 
+    Equivalently calls the function:
+
+        window.title("My New Title")
+
     :param func: the function to call expecting a single argument
     :param tkvar: the variable to bind to
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: func(tkvar.get()))
 
+
+def bind_tk_var_to_property(obj, prop_name, tkvar):
+    """
+    Helper function to bind an arbitrary property to a tkvar value.
+
+    Example:
+
+    class Cat:
+        def __init__(self):
+            self.name = "Tiger"
+
+    window = tk.Tk()
+    var = tk.StringVar()
+    cat = Cat()
+    bind_tk_var_to_property(cat, "name", var)
+    var.set("Basement Cat")
+    window.mainloop()
+
+    Equivalently sets the property:
+
+        cat.name = "Basement Cat"
+
+    :param obj: the object whose property will be changed
+    :param str prop_name: name of the property to change
+    :param tk.Variable tkvar: the tk variable from which to get a value
+    """
+    tkvar.trace("w", lambda _, __, ___, v=tkvar: setattr(obj, prop_name, v.get()))
 
 class FormattableTkStringVar(tk.StringVar):
     """
@@ -184,6 +219,8 @@ class ToggledFrame(tk.LabelFrame):
         self.show = tk.IntVar(name=name)
         if self.__prefs:
             self.show.set(self.__prefs.get(name, 1))  # Retrieve from prefs
+        else:
+            self.show.set(1)  # Default is show
 
         def __update_show(name, value):
             if self.__prefs:

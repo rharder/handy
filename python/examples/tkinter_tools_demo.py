@@ -11,9 +11,10 @@ from handy.tkinter_tools import *
 
 def main():
     # demo_bindable_text_area()
-    demo_formattable_tkstringvar()
+    # demo_formattable_tkstringvar()
     # demo_bind_tk_attribute()
     # demo_bind_tk_method()
+    demo_toggled_frame()
 
 
 def demo_bindable_text_area():
@@ -29,6 +30,48 @@ def demo_bindable_text_area():
     ba2.pack()
 
     var.set("Type something here")
+
+    window.mainloop()
+
+def demo_toggled_frame():
+    """ Demonstrate ToggledFrame """
+
+    window = tk.Tk()
+    window.title("ToggledFrame")
+
+    # Some arbitrary labels
+    f1 = ToggledFrame(window, text="ToggledFrame can be collapsed. Click here.")
+    f1.pack(fill=tk.BOTH)
+    for i in range(5):
+        lbl = tk.Label(f1.subframe, text="Label {}".format(i))
+        lbl.pack(fill=tk.BOTH)
+
+    # Some labels and also demonstrate text to show when hidden
+    f2 = ToggledFrame(window, text="Here's another")
+    f2.pack(fill=tk.BOTH)
+    for i in range(2):
+        lbl = tk.Label(f2.subframe, text="Label {}".format(i))
+        lbl.pack(fill=tk.BOTH)
+    # You can have data show up in the collapsed title bar.
+    # In this case we're letting the user set it for the demo.
+    var = tk.StringVar()
+    txt = tk.Entry(f2.subframe, textvariable=var)
+    txt.pack(fill=tk.BOTH)
+    bind_tk_var_to_property(f2, "hidden_text", var)
+    var.set("Data here")
+
+    # Nested frames
+    f3 = ToggledFrame(window, text="Nested Frames")
+    f3.pack(fill=tk.BOTH)
+    def _more(parent, remaining=0):
+        if remaining > 0:
+            f = ToggledFrame(parent, text="Another ({})".format(remaining))
+            f.pack(fill=tk.BOTH)
+            _more(f.subframe, remaining-1)
+        else:
+            lbl = tk.Label(parent, text="Turtles, all the way down")
+            lbl.pack()
+    _more(f3.subframe, 3)
 
     window.mainloop()
 
@@ -71,7 +114,7 @@ def demo_bind_tk_attribute():
 
     label = tk.Label(window, text="Background color is bound to variable")
     label.pack()
-    bind_tk_attribute(label, "bg", var)
+    bind_tk_var_to_tk_attribute(label, "bg", var)
 
     colors = ["light gray", "light blue", "yellow", "green"]
     for color in colors:
@@ -84,7 +127,7 @@ def demo_bind_tk_attribute():
 def demo_bind_tk_method():
     window = tk.Tk()
     var = tk.StringVar()
-    bind_tk_method(window.title, var)
+    bind_tk_var_to_method(window.title, var)
 
     tk.Label(window, text="Window title:").pack(pady=10)
     tk.Entry(window, textvariable=var).pack(padx=20, pady=10)
