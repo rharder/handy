@@ -9,7 +9,7 @@ from tkinter import scrolledtext
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
-__date__ = "5 Dec 2016"
+__date__ = "10 Oct 2017"
 __license__ = "Public Domain"
 
 
@@ -279,7 +279,7 @@ class ToolTip(object):
     Author: Wayne Brown
     """
 
-    def __init__(self, widget, text='widget info'):
+    def __init__(self, widget, text='widget info', textvariable=None):
         self.wait_time = 500  # miliseconds
         self.wrap_length = 300  # pixels
         self.widget = widget
@@ -289,6 +289,11 @@ class ToolTip(object):
         self.widget.bind("<ButtonPress>", self.leave)
         self.id = None
         self.tw = None
+        self.textvariable = textvariable  # type: tk.Variable
+        if self.textvariable is not None:
+            self.textvariable.trace("w", lambda _, __, ___, v=self.textvariable: setattr(self, "text", str(v.get())))
+            self.text = str(self.textvariable.get())
+
 
     def enter(self, event=None):
         self.schedule()
