@@ -4,6 +4,8 @@ Easily subclassed websocket server.
 
 For example usage, see examples folder (also here: http://pastebin.com/xDSACmdV)
 Source: https://github.com/rharder/handy
+
+June 2018 - Updated for aiohttp v3.3
 """
 import asyncio
 
@@ -42,8 +44,7 @@ class WsServer(object):
     def __str__(self):
         return "{}({}:{})".format(self.__class__.__name__, self.port, self.route)
 
-    @asyncio.coroutine
-    def start(self, port: int = None, route: str = None):
+    async def start(self, port: int = None, route: str = None):
         """
         Starts the websocket server and begins listening on a given port and at
         a given route.  These values can be provided in the __init__() constructor
@@ -56,35 +57,37 @@ class WsServer(object):
         """
         self.route = route or self.route
         self.port = port or self.port
-        self.loop = asyncio.get_event_loop()
+        # self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.new_event_loop()
 
         self.app = web.Application()
         self.app.router.add_get(self.route, self.websocket_handler)
-        yield from self.app.startup()
+        # await self.app.startup()
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        self.site = web.TCPSite(self.runner, 'localhost', self.port)
+        await self.site.start()
 
-        handler = self.app.make_handler()
-        self.srv = yield from asyncio.get_event_loop().create_server(handler, port=self.port)
+        # handler = self.app.make_handler()
+        # self.srv = await asyncio.get_event_loop().create_server(handler, port=self.port)
 
         start_msg = "{} listening on port {}".format(self.__class__.__name__, self.port)
         self.log.info(start_msg)
         # print(start_msg)
 
-    @asyncio.coroutine
-    def close(self):
+    async def close(self):
         """ Closes all connections to websocket clients and then shuts down the server. """
         self.srv.close()
-        yield from self.srv.wait_closed()
-        yield from self.close_websockets()
-        yield from self.app.shutdown()
-        yield from self.app.cleanup()
+        await self.srv.wait_closed()
+        await self.close_websockets()
+        await self.app.shutdown()
+        await self.app.cleanup()
 
-    @asyncio.coroutine
-    def close_websockets(self):
+    async def close_websockets(self):
         for ws in self.websockets.copy():  # type: web.WebSocketResponse
-            yield from ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
+            await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
 
-    @asyncio.coroutine
-    def websocket_handler(self, request: web.BaseRequest):
+    async def websocket_handler(self, request: web.BaseRequest):
         """
         Handles the incoming websocket client connection and calls on_websocket()
         in order to hand off control to subclasses of the server.
@@ -95,19 +98,18 @@ class WsServer(object):
         your web.Application().
         """
         ws = web.WebSocketResponse()
-        yield from ws.prepare(request)
+        await ws.prepare(request)
 
         self.websockets.append(ws)
         try:
-            yield from self.on_websocket(ws)
+            await self.on_websocket(ws)
         finally:
             if ws in self.websockets:
                 self.websockets.remove(ws)
 
         return ws
 
-    @asyncio.coroutine
-    def on_websocket(self, ws: web.WebSocketResponse):
+    async def on_websocket(self, ws: web.WebSocketResponse):
         """
         Override this function if you want to handle new incoming websocket clients.
         The default behavior is to listen indefinitely for incoming messages from clients
@@ -115,15 +117,14 @@ class WsServer(object):
         """
         while True:
             try:
-                ws_msg = yield from ws.receive()  # type: aiohttp.WSMessage
+                ws_msg = await ws.receive()  # type: aiohttp.WSMessage
             except RuntimeError as e:  # Socket closing throws RuntimeError
                 break
             else:
                 # Call on_message() if it got something
-                yield from self.on_message(ws=ws, ws_msg_from_client=ws_msg)
+                await self.on_message(ws=ws, ws_msg_from_client=ws_msg)
 
-    @asyncio.coroutine
-    def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
+    async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
         """ Override this function to handle incoming messages from websocket clients. """
         pass
 

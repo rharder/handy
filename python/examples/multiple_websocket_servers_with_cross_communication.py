@@ -7,6 +7,8 @@ In response to stackoverflow question:
 http://stackoverflow.com/questions/35820782/how-to-manage-websockets-across-multiple-servers-workers
 
 Pastebin: http://pastebin.com/xDSACmdV
+
+Still working on aiohttp v3.3 changes - June 2018
 """
 import asyncio
 import datetime
@@ -70,7 +72,7 @@ class CapitalizeEchoServer(WsServer):
         # print("RECVD", ws_msg_from_client)
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
             cap = str(ws_msg_from_client.data).upper()
-            ws.send_str(cap)
+            await ws.send_str(cap)
 
 
 class RandomQuoteServer(WsServer):
@@ -89,7 +91,7 @@ class RandomQuoteServer(WsServer):
             while self.srv.sockets is not None:
                 quote = random.choice(RandomQuoteServer.QUOTES)
                 print("Sending", quote, flush=True)
-                ws.send_json({"quote": quote})
+                await ws.send_json({"quote": quote})
                 await asyncio.sleep(self.interval)
 
         loop = asyncio.get_event_loop()
@@ -110,7 +112,7 @@ class TimeOfDayServer(WsServer):
             while self.srv.sockets is not None:
                 if int(time.time()) % 10 == 0:  # Only on the 10 second mark
                     timestamp = "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now())
-                    self.broadcast_json({"timestamp": timestamp})
+                    await self.broadcast_json({"timestamp": timestamp})
                 await asyncio.sleep(1)
 
         loop = asyncio.get_event_loop()
