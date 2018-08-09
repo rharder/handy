@@ -8,6 +8,7 @@ Source: https://github.com/rharder/handy
 June 2018 - Updated for aiohttp v3.3
 """
 import asyncio
+import weakref
 
 import aiohttp  # pip install aiohttp  # Tested up to aiohttp==2.1.0
 import logging
@@ -36,10 +37,13 @@ class WsServer(object):
         self.route = route
 
         # Internal use
-        self.websockets = []  # type: [web.WebSocketResponse]
-        self.loop = None  # type: asyncio.AbstractEventLoop
+        # self.websockets = []  # type: [web.WebSocketResponse]
+        # self.loop = None  # type: asyncio.AbstractEventLoop
         self.app = None  # type: web.Application
-        self.srv = None  # type: asyncio.base_events.Server
+        self.site = None  # type: web.TCPSite
+        self.runner = None  # type: web.AppRunner
+        self._running = False  # type: bool
+        # self.srv = None  # type: asyncio.base_events.Server
 
     def __str__(self):
         return "{}({}:{})".format(self.__class__.__name__, self.port, self.route)
@@ -58,34 +62,68 @@ class WsServer(object):
         self.route = route or self.route
         self.port = port or self.port
         # self.loop = asyncio.get_event_loop()
-        self.loop = asyncio.new_event_loop()
+        # self.loop = asyncio.new_event_loop()
 
         self.app = web.Application()
+        self.app.on_shutdown.append(self._on_shutdown)
+        self.app['websockets'] = weakref.WeakSet()
         self.app.router.add_get(self.route, self.websocket_handler)
+        # web.run_app(self.app, port=self.port)
+
         # await self.app.startup()
+
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, 'localhost', self.port)
         await self.site.start()
-
-        # handler = self.app.make_handler()
-        # self.srv = await asyncio.get_event_loop().create_server(handler, port=self.port)
+        self._running = True
 
         start_msg = "{} listening on port {}".format(self.__class__.__name__, self.port)
         self.log.info(start_msg)
-        # print(start_msg)
+        print(start_msg)
 
     async def close(self):
         """ Closes all connections to websocket clients and then shuts down the server. """
-        self.srv.close()
-        await self.srv.wait_closed()
+        print("close called", self.__class__.__name__)
+
+        print("self.runner.cleanup() ...")
+        # cleanup will in turn cause _on_shutdown to be run
+        await self.runner.cleanup()
+        print("self.runner.cleanup complete")
+
+    async def _on_shutdown(self, app):
+        """Callback for when self.runner gets cleaned up."""
+        print("_on_shutdown", app, flush=True)
         await self.close_websockets()
-        await self.app.shutdown()
-        await self.app.cleanup()
+        self._running = False
+        print("end of _on_shutdown", flush=True)
+        # for ws in set(app['websockets']):
+        #     print("Closing socket", ws, flush=True)
+        #     await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
+        #     print("Closed", ws)
+        # print("runner cleanup...")
+        # await self.runner.cleanup()
+        # print("runner cleaned.")
+        # print("Exiting system...")
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(asyncio.sleep(1))
+        # loop.stop()
+
+        # print("_on_shutdown called)")
+        # await self.close_websockets()
+        # # asyncio.get_event_loop().stop()
+
+    @property
+    def running(self):
+        return self._running
 
     async def close_websockets(self):
-        for ws in self.websockets.copy():  # type: web.WebSocketResponse
+        print("close_websockets called")
+        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+            print("Closing websocket", ws)
             await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
+            print("Closed", ws)
+        print("end of close_websockets", flush=True)
 
     async def websocket_handler(self, request: web.BaseRequest):
         """
@@ -100,13 +138,14 @@ class WsServer(object):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        self.websockets.append(ws)
+        # self.websockets.append(ws)
+        self.app['websockets'].add(ws)
         try:
             await self.on_websocket(ws)
         finally:
-            if ws in self.websockets:
-                self.websockets.remove(ws)
-
+            # if ws in self.websockets:
+            #     self.websockets.remove(ws)
+            self.app['websockets'].discard(ws)
         return ws
 
     async def on_websocket(self, ws: web.WebSocketResponse):
@@ -119,26 +158,39 @@ class WsServer(object):
             try:
                 ws_msg = await ws.receive()  # type: aiohttp.WSMessage
             except RuntimeError as e:  # Socket closing throws RuntimeError
+                # print("RuntimeError - did socket close?", e, flush=True)
                 break
             else:
                 # Call on_message() if it got something
-                await self.on_message(ws=ws, ws_msg_from_client=ws_msg)
+                try:
+                    await self.on_message(ws=ws, ws_msg_from_client=ws_msg)
+                except RuntimeError as e:
+                    # Probably the socket is closing
+                    # Exception seen during development:
+                    #   This event loop is already running
+                    # print("await on_message aborted")
+                    break
+
+        print("on_websocket last line", self)
 
     async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
         """ Override this function to handle incoming messages from websocket clients. """
         pass
 
-    def broadcast_json(self, msg):
+    async def broadcast_json(self, msg):
         """ Converts msg to json and broadcasts the json data to all connected clients. """
-        for ws in self.websockets.copy():  # type: web.WebSocketResponse
-            ws.send_json(msg)
+        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
+        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+            await ws.send_json(msg)
 
-    def broadcast_text(self, msg: str):
+    async def broadcast_text(self, msg: str):
         """ Broadcasts a string to all connected clients. """
-        for ws in self.websockets.copy():  # type: web.WebSocketResponse
-            ws.send_str(msg)
+        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
+        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+            await ws.send_str(msg)
 
-    def broadcast_bytes(self, msg: bytes):
+    async def broadcast_bytes(self, msg: bytes):
         """ Broadcasts bytes to all connected clients. """
-        for ws in self.websockets.copy():  # type: web.WebSocketResponse
-            ws.send_bytes(msg)
+        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
+        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+            await ws.send_bytes(msg)
