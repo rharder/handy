@@ -29,20 +29,20 @@ __license__ = "Public Domain"
 def main():
     # Create servers
     cap_srv = CapitalizeEchoServer(port=9990)
-    cap_srv2 = CapitalizeEchoServer(port=9990, route="/lower", transform=str.lower)
-    # rnd_srv = RandomQuoteServer(port=9991, interval=2)
-    # tim_srv = TimeOfDayServer(port=9992)
+    # cap_srv2 = CapitalizeEchoServer(port=9990, route="/lower", transform=str.lower)
+    rnd_srv = RandomQuoteServer(port=9991, interval=2)
+    tim_srv = TimeOfDayServer(port=9992)
 
     # Queue their start operation
     loop = asyncio.get_event_loop()
     loop.create_task(cap_srv.start())
-    loop.create_task(cap_srv2.start())
-    # loop.create_task(rnd_srv.start())
-    # loop.create_task(tim_srv.start())
+    # loop.create_task(cap_srv2.start())
+    loop.create_task(rnd_srv.start())
+    loop.create_task(tim_srv.start())
 
     # Open web pages to test them
-    # webtests = [9990, 9991, 9992]
-    webtests = [9990]
+    webtests = [9990, 9991, 9992]
+    # webtests = [9990]
     for port in webtests:
         url = "http://www.websocket.org/echo.html?location=ws://localhost:{}".format(port)
         webbrowser.open(url)
@@ -54,8 +54,8 @@ def main():
         print("Sending alert:", msg)
         msg_dict = {"alert": str(msg)}
         await cap_srv.broadcast_json(msg_dict)
-        # await rnd_srv.broadcast_json(msg_dict)
-        # await tim_srv.broadcast_json(msg_dict)
+        await rnd_srv.broadcast_json(msg_dict)
+        await tim_srv.broadcast_json(msg_dict)
 
     loop.create_task(_alert_all("all your base are belong to us", 5))
 
@@ -75,7 +75,7 @@ def main():
 class CapitalizeEchoServer(WsServer):
     """ Echoes back to client whatever they sent, but capitalized. """
 
-    def __init__(self, transform=str.upper, *kargs, **kwargs):
+    def __init__(self, transform: callable = str.upper, *kargs, **kwargs):
         super().__init__(*kargs, **kwargs)
         self.transform = transform
 
