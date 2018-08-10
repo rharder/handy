@@ -43,6 +43,7 @@ class WsServer(object):
         self.site = None  # type: web.TCPSite
         self.runner = None  # type: web.AppRunner
         self._running = False  # type: bool
+        self._shutting_down = False  # type: bool
         # self.srv = None  # type: asyncio.base_events.Server
 
     def __str__(self):
@@ -61,16 +62,11 @@ class WsServer(object):
         """
         self.route = route or self.route
         self.port = port or self.port
-        # self.loop = asyncio.get_event_loop()
-        # self.loop = asyncio.new_event_loop()
 
         self.app = web.Application()
         self.app.on_shutdown.append(self._on_shutdown)
         self.app['websockets'] = weakref.WeakSet()
         self.app.router.add_get(self.route, self.websocket_handler)
-        # web.run_app(self.app, port=self.port)
-
-        # await self.app.startup()
 
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
@@ -84,16 +80,23 @@ class WsServer(object):
 
     async def close(self):
         """ Closes all connections to websocket clients and then shuts down the server. """
-        print("close called", self.__class__.__name__)
 
-        print("self.runner.cleanup() ...")
-        # cleanup will in turn cause _on_shutdown to be run
-        await self.runner.cleanup()
-        print("self.runner.cleanup complete")
+        if not self._shutting_down:
+            self._shutting_down = True
+            # await self.runner.cleanup()
+            asyncio.create_task(self.runner.cleanup())
+        #
+        # print("close called", self.__class__.__name__)
+        #
+        # print("self.runner.cleanup() queuing...")
+        # # cleanup will in turn cause _on_shutdown to be run
+        # # await self.runner.cleanup()
+        # asyncio.create_task(self.runner.cleanup())
+        # print("self.runner.cleanup queued")
 
     async def _on_shutdown(self, app):
         """Callback for when self.runner gets cleaned up."""
-        print("_on_shutdown", app, flush=True)
+        print("_on_shutdown", self.__class__.__name__, app, flush=True)
         await self.close_websockets()
         self._running = False
         print("end of _on_shutdown", flush=True)
@@ -105,8 +108,9 @@ class WsServer(object):
         # await self.runner.cleanup()
         # print("runner cleaned.")
         # print("Exiting system...")
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(asyncio.sleep(1))
+
+        # loop = asyncio.get_event_loop()
+        # loop.run_until_complete(asyncio.sleep(2))
         # loop.stop()
 
         # print("_on_shutdown called)")
@@ -179,18 +183,21 @@ class WsServer(object):
 
     async def broadcast_json(self, msg):
         """ Converts msg to json and broadcasts the json data to all connected clients. """
-        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
-        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
-            await ws.send_json(msg)
+
+        if self.running:
+            for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+                await ws.send_json(msg)
 
     async def broadcast_text(self, msg: str):
         """ Broadcasts a string to all connected clients. """
-        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
-        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
-            await ws.send_str(msg)
+
+        if self.running:
+            for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+                await ws.send_str(msg)
 
     async def broadcast_bytes(self, msg: bytes):
         """ Broadcasts bytes to all connected clients. """
-        # for ws in self.websockets.copy():  # type: web.WebSocketResponse
-        for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
-            await ws.send_bytes(msg)
+
+        if self.running:
+            for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
+                await ws.send_bytes(msg)

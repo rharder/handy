@@ -28,19 +28,19 @@ __license__ = "Public Domain"
 
 def main():
     # Create servers
-    # cap_srv = CapitalizeEchoServer(port=9990)
+    cap_srv = CapitalizeEchoServer(port=9990)
     # rnd_srv = RandomQuoteServer(port=9991, interval=2)
-    tim_srv = TimeOfDayServer(port=9992)
+    # tim_srv = TimeOfDayServer(port=9992)
 
     # Queue their start operation
     loop = asyncio.get_event_loop()
-    # loop.create_task(cap_srv.start())
+    loop.create_task(cap_srv.start())
     # loop.create_task(rnd_srv.start())
-    loop.create_task(tim_srv.start())
+    # loop.create_task(tim_srv.start())
 
     # Open web pages to test them
-    webtests = [9990, 9991, 9992]
-    webtests = [9992]
+    # webtests = [9990, 9991, 9992]
+    webtests = [9990]
     for port in webtests:
         url = "http://www.websocket.org/echo.html?location=ws://localhost:{}".format(port)
         webbrowser.open(url)
@@ -51,12 +51,12 @@ def main():
         await asyncio.sleep(delay)
         print("Sending alert:", msg)
         msg_dict = {"alert": str(msg)}
-        # await cap_srv.broadcast_json(msg_dict)
+        await cap_srv.broadcast_json(msg_dict)
         # await rnd_srv.broadcast_json(msg_dict)
-        await tim_srv.broadcast_json(msg_dict)
+        # await tim_srv.broadcast_json(msg_dict)
 
     # loop.call_later(2, _alert_all, "all your base are belong to us")
-    loop.create_task(_alert_all("all your base are belong to us", 3))
+    # loop.create_task(_alert_all("all your base are belong to us", 3))
 
     # Run event loop
     try:
@@ -64,9 +64,9 @@ def main():
     except KeyboardInterrupt:
         print("keyboard interrupt")
 
-        # loop.run_until_complete(cap_srv.close())
+        loop.run_until_complete(cap_srv.close())
         # loop.run_until_complete(rnd_srv.close())
-        loop.run_until_complete(tim_srv.close())
+        # loop.run_until_complete(tim_srv.close())
 
         loop.close()
     print("loop.run_forever() must have finished")
@@ -85,6 +85,10 @@ class CapitalizeEchoServer(WsServer):
             cap = str(ws_msg_from_client.data).upper()
             await ws.send_str(cap)
 
+            if "BAR" in cap:
+                await self.close()
+                # asyncio.create_task(self.close())
+
 
 class RandomQuoteServer(WsServer):
     """ Sends a random quote to the client every so many seconds. """
@@ -102,6 +106,9 @@ class RandomQuoteServer(WsServer):
         The default behavior is to listen indefinitely for incoming messages from clients
         and call on_message() with each one.
         """
+
+        await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
+
 
         async def _regular_interval():
             counter = 0
@@ -147,10 +154,16 @@ class TimeOfDayServer(WsServer):
         await super().start(*kargs, **kwargs)
 
         async def _regular_interval():
+            counter = 0
             while self.runner.server is not None:
+                if counter >= 3:
+                    await self.close()
+                    print("closed myself", self)
+                    break
                 if int(time.time()) % self.interval == 0:  # Only on the x second mark
                     timestamp = "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now())
                     await self.broadcast_json({"timestamp": timestamp})
+                    counter += 1
                 await asyncio.sleep(1)
 
         self.task = asyncio.create_task(_regular_interval())
