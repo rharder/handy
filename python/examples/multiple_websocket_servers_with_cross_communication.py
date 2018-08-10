@@ -29,12 +29,14 @@ __license__ = "Public Domain"
 def main():
     # Create servers
     cap_srv = CapitalizeEchoServer(port=9990)
+    cap_srv2 = CapitalizeEchoServer(port=9990, route="/lower", transform=str.lower)
     # rnd_srv = RandomQuoteServer(port=9991, interval=2)
     # tim_srv = TimeOfDayServer(port=9992)
 
     # Queue their start operation
     loop = asyncio.get_event_loop()
     loop.create_task(cap_srv.start())
+    loop.create_task(cap_srv2.start())
     # loop.create_task(rnd_srv.start())
     # loop.create_task(tim_srv.start())
 
@@ -55,18 +57,16 @@ def main():
         # await rnd_srv.broadcast_json(msg_dict)
         # await tim_srv.broadcast_json(msg_dict)
 
-    # loop.call_later(2, _alert_all, "all your base are belong to us")
-    # loop.create_task(_alert_all("all your base are belong to us", 3))
+    loop.create_task(_alert_all("all your base are belong to us", 5))
 
     # Run event loop
     try:
         loop.run_forever()
     except KeyboardInterrupt:
         print("keyboard interrupt")
-
         loop.run_until_complete(cap_srv.close())
-        # loop.run_until_complete(rnd_srv.close())
-        # loop.run_until_complete(tim_srv.close())
+        loop.run_until_complete(rnd_srv.close())
+        loop.run_until_complete(tim_srv.close())
 
         loop.close()
     print("loop.run_forever() must have finished")
@@ -75,6 +75,10 @@ def main():
 class CapitalizeEchoServer(WsServer):
     """ Echoes back to client whatever they sent, but capitalized. """
 
+    def __init__(self, transform=str.upper, *kargs, **kwargs):
+        super().__init__(*kargs, **kwargs)
+        self.transform = transform
+
     async def on_websocket(self, ws: web.WebSocketResponse):
         """Identify the demo server"""
         await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
@@ -82,12 +86,9 @@ class CapitalizeEchoServer(WsServer):
 
     async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
-            cap = str(ws_msg_from_client.data).upper()
+            # cap = str(ws_msg_from_client.data).upper()
+            cap = self.transform(str(ws_msg_from_client.data))
             await ws.send_str(cap)
-
-            if "BAR" in cap:
-                await self.close()
-                # asyncio.create_task(self.close())
 
 
 class RandomQuoteServer(WsServer):
@@ -106,40 +107,20 @@ class RandomQuoteServer(WsServer):
         The default behavior is to listen indefinitely for incoming messages from clients
         and call on_message() with each one.
         """
-
         await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
 
-
         async def _regular_interval():
-            counter = 0
-            while self.runner.server is not None:
-                quote = "fake quote"
+            # counter = 0
+            while not ws.closed:
+                quote = random.choice(self.QUOTES)
                 await ws.send_json({"quote": quote})
-                counter += 1
-                if counter >= 2:
-                    await self.close()
-                else:
-                    await asyncio.sleep(2)
-                pass
-            print("Exiting _regular_interval... (not sure this ever is called)")
+                await asyncio.sleep(self.interval)
+            # print("Exiting _regular_interval...")
 
-        task = asyncio.create_task(_regular_interval())
+        asyncio.create_task(_regular_interval())
+        await super().on_websocket(ws)  # Block here until socket dies
 
-        counter = 0
-        while True:
-            counter += 1
-            if counter > 2:
-                await self.close()
-                break
-            try:
-                ws_msg = await ws.receive()  # type: aiohttp.WSMessage
-            except RuntimeError as e:  # Socket closing throws RuntimeError
-                print("RuntimeError - did socket close?", e, flush=True)
-                break
-            else:
-                # Call on_message() if it got something
-                await self.on_message(ws=ws, ws_msg_from_client=ws_msg)
-        print("on_websocket last line", self)
+        # print("on_websocket last line within RandomQuoteServer", self)
 
 
 class TimeOfDayServer(WsServer):
@@ -148,28 +129,29 @@ class TimeOfDayServer(WsServer):
     def __init__(self, interval: float = 2, *kargs, **kwargs):
         super().__init__(*kargs, **kwargs)
         self.interval = interval
-        self.task = None  # type: asyncio.Task
+        # self.task = None  # type: asyncio.Task
 
     async def start(self, *kargs, **kwargs):
         await super().start(*kargs, **kwargs)
 
         async def _regular_interval():
-            counter = 0
-            while self.runner.server is not None:
-                if counter >= 3:
-                    await self.close()
-                    print("closed myself", self)
-                    break
+            # counter = 0
+            while self.running and not self.shutting_down:
+                # if counter >= 5:
+                #     await self.close()
+                #     print("closed myself", self)
+                #     break
                 if int(time.time()) % self.interval == 0:  # Only on the x second mark
                     timestamp = "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now())
                     await self.broadcast_json({"timestamp": timestamp})
-                    counter += 1
+                    # counter += 1
                 await asyncio.sleep(1)
 
-        self.task = asyncio.create_task(_regular_interval())
+        # self.task = asyncio.create_task(_regular_interval())
+        asyncio.create_task(_regular_interval())
 
     async def close(self):
-        self.task.cancel()
+        # self.task.cancel()
         await super().close()
 
 

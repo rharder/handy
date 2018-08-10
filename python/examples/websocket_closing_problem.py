@@ -192,6 +192,11 @@ class WsServer(object):
         await self.site.start()
         self._running = True
 
+        web.run_app()
+
+
+
+
     async def websocket_handler(self, request: web.BaseRequest):
         """
         Handles the incoming websocket client connection and calls on_websocket()
@@ -221,7 +226,8 @@ class WsServer(object):
         The default behavior is to listen indefinitely for incoming messages from clients
         and call on_message() with each one.
         """
-        while True:
+        while self._running and not self._shutting_down:
+            print("RE-ENTERING on_websocket while loop")
             try:
                 ws_msg = await ws.receive()  # type: aiohttp.WSMessage
             except RuntimeError as e:  # Socket closing throws RuntimeError
@@ -246,28 +252,11 @@ class WsServer(object):
         """ Override this function to handle incoming messages from websocket clients. """
         pass
 
-    # async def close(self):
-    #     await self.runner.cleanup()
-    #
-    # async def _on_shutdown(self, app):
-    #     print("_on_shutdown", app, flush=True)
-    #     await self.close_websockets()
-    #
-    #     # print("Exiting system...")
-    #     # loop = asyncio.get_event_loop()
-    #     # loop.stop()
-    #
-    # async def close_websockets(self):
-    #     print("close_websockets called")
-    #     for ws in set(self.app['websockets']):  # type: web.WebSocketResponse
-    #         print("Closing websocket", ws)
-    #         await ws.close(code=aiohttp.WSCloseCode.GOING_AWAY, message='Server shutdown')
-    #         print("Closed", ws)
 
 
 class WsExample(WsServer):
 
-    async def on_websocket(self, ws: web.WebSocketResponse):
+    async def on_websocketZZ(self, ws: web.WebSocketResponse):
 
 
         counter = 0
@@ -291,11 +280,28 @@ class WsExample(WsServer):
         """ Override this function to handle incoming messages from websocket clients. """
         pass
         cap = str(ws_msg_from_client.data).upper()
+        await ws.send_str(cap)
         if "BAR" in cap:
             await self.close()
             # asyncio.create_task(self.close())
 
 
+class CapitalizeEchoServer(WsServer):
+    """ Echoes back to client whatever they sent, but capitalized. """
+
+    async def on_websocket(self, ws: web.WebSocketResponse):
+        """Identify the demo server"""
+        await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
+        await super().on_websocket(ws)
+
+    async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
+        if ws_msg_from_client.type == web.WSMsgType.TEXT:
+            cap = str(ws_msg_from_client.data).upper()
+            await ws.send_str(cap)
+
+            if "BAR" in cap:
+                await self.close()
+                # asyncio.create_task(self.close())
 
 port = 8080
 url = "http://www.websocket.org/echo.html?location=ws://localhost:{}".format(port)
@@ -303,7 +309,8 @@ webbrowser.open(url)
 loop = asyncio.get_event_loop()
 
 # server = WsServer(port=8080)
-server = WsExample(port=8080)
+# server = WsExample(port=8080)
+server = CapitalizeEchoServer(port=8080)
 # server = BareBonesExample()
 loop.create_task(server.start())
 
