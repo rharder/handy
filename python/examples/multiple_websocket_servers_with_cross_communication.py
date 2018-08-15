@@ -19,7 +19,7 @@ import webbrowser
 import aiohttp
 from aiohttp import web
 
-from handy.websocket_server import WsServer
+from handy.websocket_server import WsServerSingleRouteDEPRECATED
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -28,7 +28,7 @@ __license__ = "Public Domain"
 
 def main():
     # Create servers
-    cap_srv = CapitalizeEchoServer(port=9990, route="/foo")
+    cap_srv = CapitalizeEchoServerSingleRouteDEPRECATED(port=9990, route="/foo")
     # cap_srv2 = CapitalizeEchoServer(port=9990, route="/lower", transform=str.lower)
     # rnd_srv = RandomQuoteServer(port=9991, interval=2)
     # tim_srv = TimeOfDayServer(port=9992)
@@ -72,7 +72,7 @@ def main():
     print("loop.run_forever() must have finished")
 
 
-class CapitalizeEchoServer(WsServer):
+class CapitalizeEchoServerSingleRouteDEPRECATED(WsServerSingleRouteDEPRECATED):
     """ Echoes back to client whatever they sent, but capitalized. """
 
     def __init__(self, transform: callable = str.upper, *kargs, **kwargs):
@@ -91,7 +91,7 @@ class CapitalizeEchoServer(WsServer):
             await ws.send_str(cap)
 
 
-class RandomQuoteServer(WsServer):
+class RandomQuoteServerSingleRouteDEPRECATED(WsServerSingleRouteDEPRECATED):
     """ Sends a random quote to the client every so many seconds. """
     QUOTES = ["Wherever you go, there you are.",
               "80% of all statistics are made up.",
@@ -123,7 +123,7 @@ class RandomQuoteServer(WsServer):
         # print("on_websocket last line within RandomQuoteServer", self)
 
 
-class TimeOfDayServer(WsServer):
+class TimeOfDayServerSingleRouteDEPRECATED(WsServerSingleRouteDEPRECATED):
     """ Sends a message to all clients simultaneously about time of day. """
 
     def __init__(self, interval: float = 2, *kargs, **kwargs):

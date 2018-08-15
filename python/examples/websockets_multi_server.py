@@ -19,7 +19,7 @@ import webbrowser
 import aiohttp
 from aiohttp import web
 
-from handy.websocket_server import WsServer, WsHandler, MultiRouteWsServerEXPERIMENTAL
+from handy.websocket_server import WsServerSingleRouteDEPRECATED, WsHandler, WsServerMultiRoutes
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -28,7 +28,7 @@ __license__ = "Public Domain"
 
 def main():
     # Create servers
-    server = MultiRouteWsServerEXPERIMENTAL(port=9990)
+    server = WsServerMultiRoutes(port=9990)
     cap_hndlr = CapitalizeEchoHandler()
     rnd_hdnlr = RandomQuoteHandler(interval=2)
 
@@ -38,6 +38,7 @@ def main():
     # Queue their start operation
     loop = asyncio.get_event_loop()
     loop.create_task(server.start())
+    # loop.create_task(server.start())
 
     # Open web pages to test them
     # webtests = [9990, 9991, 9992]
@@ -48,13 +49,16 @@ def main():
     print("Be sure to click 'Connect' on the webpages that just opened.")
 
     # Queue a simulated broadcast-to-all message
-    async def _alert_all(msg, delay=0):
-        while(True):
+    async def _alert_all(msg, delay=0, num=1):
+        for _ in range(num,0,-1):
             await asyncio.sleep(delay)
-            print("Sending alert:", msg)
+            # print("Alert loop:", id(asyncio.get_event_loop()))
+            print("Broadcasting alert:", msg)
             msg_dict = {"alert": str(msg)}
             await server.broadcast_json(msg_dict)
 
+        await server.close()
+        # print("alert coroutine closed server and is exiting")
 
     loop.create_task(_alert_all("all your base are belong to us", 5))
 
@@ -78,10 +82,15 @@ class CapitalizeEchoHandler(WsHandler):
         await super().on_websocket(ws)
 
     async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
+        print("Capitalize response loop:", id(asyncio.get_event_loop()))
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
             cap = str(ws_msg_from_client.data).upper()
             # cap = self.transform(str(ws_msg_from_client.data))
             await ws.send_str(cap)
+        elif ws_msg_from_client.type == web.WSMsgType.CLOSING:
+            print("Received 'closing' message of websocket")
+        else:
+            raise Exception(str(ws_msg_from_client))
 
 
 class RandomQuoteHandler(WsHandler):
