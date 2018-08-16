@@ -19,7 +19,7 @@ import webbrowser
 import aiohttp
 from aiohttp import web
 
-from handy.websocket_server import WsServerSingleRouteDEPRECATED, WsHandler, WsServerMultiRoutes
+from handy.websocket_server import WsHandler, WsServerMultiRoutes
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
