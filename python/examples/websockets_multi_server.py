@@ -57,7 +57,7 @@ def main():
             msg_dict = {"alert": str(msg)}
             await server.broadcast_json(msg_dict)
 
-        await server.close()
+        # await server.close()
         # print("alert coroutine closed server and is exiting")
 
     loop.create_task(_alert_all("all your base are belong to us", 5))
@@ -112,12 +112,27 @@ class RandomQuoteHandler(WsHandler):
         await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
 
         async def _regular_interval():
-            # counter = 0
+            counter = 0
             while not ws.closed:
                 quote = random.choice(self.QUOTES)
-                await ws.send_json({"quote": quote})
+                try:
+                    print("SENDING QUOTE", quote)
+                    await ws.send_json({"quote": quote})
+                    counter += 1
+                    if counter > 2:
+                        print("server is closing the websocket for experimenting")
+                        await ws.close()
+                        print("\tclosed")
+                    await asyncio.sleep(0)
+                    if ws.exception():
+                        raise ws.exception()
+                    print("\tSENT")
+                except Exception as ex:
+                    print(ex)
+                    ex.with_traceback()
+                    return
                 await asyncio.sleep(self.interval)
-            # print("Exiting _regular_interval...")
+            print("Exiting _regular_interval...")
 
         asyncio.create_task(_regular_interval())
         await super().on_websocket(ws)  # Block here until socket dies

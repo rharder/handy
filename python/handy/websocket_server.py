@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Easily subclassed websocket server.
+Easy to use Websocket Server.
 
-For example usage, see examples folder (also here: http://pastebin.com/xDSACmdV)
 Source: https://github.com/rharder/handy
 
 June 2018 - Updated for aiohttp v3.3
@@ -377,10 +376,10 @@ class WsHandler(object):
 
         """
         # while self.parent.running and not self.parent.shutting_down:
-        print(self.__class__.__name__, "entering on_websocket()", flush=True)
+        # print(self.__class__.__name__, "entering on_websocket()", flush=True)
         try:
             while not ws.closed:
-                print(self.__class__.__name__, "while not ws.closed loop", flush=True)
+                # print(self.__class__.__name__, "while not ws.closed loop", flush=True)
                 ws_msg = await ws.receive()  # type: aiohttp.WSMessage
                 await self.on_message(ws=ws, ws_msg_from_client=ws_msg)
 
