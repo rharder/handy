@@ -6,7 +6,7 @@ Source: https://github.com/rharder/handy
 
 August 2018 - Initial creation
 """
-import collections
+from typing import AsyncIterator
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -16,8 +16,9 @@ import asyncio
 
 import aiohttp
 
-#testing
+# testing
 WEBSOCKET_URL = 'wss://stream.pushbullet.com/websocket/'
+
 
 def main():
     url = "wss://demos.kaazing.com/echo"
@@ -28,8 +29,6 @@ def main():
     url = WEBSOCKET_URL + key
 
     #
-    #     # proxy = "http://gatekeeper.mitre.org"
-    #
     async def _run():
 
         headers = {"Access-Token": key}
@@ -38,34 +37,34 @@ def main():
 
             # print("Sending: hello")
             # await wc.send_str("hello")
-#
-#             # print("Sending: world")
-#             # await wc.send_str("world")
-#
-#             # print("Flushing...")
-#             # await wc.flush_incoming(timeout=1)
-#             # print("\tFlushed.")
-#
-#             # print("Sending: foobar")
-#             # await wc.send_str("foobar")
-#
-#             # msg = await wc.get_msg()
-#             # print("Received:", msg)
-#             # try:
-#             #     msg = await wc.get_msg(timeout=1)
-#             # except asyncio.futures.TimeoutError as te:
-#             #     print("Timeout:", te)
-#             # else:
-#             #     print("Received:", msg)
-#
-#             # while True:
-#             #     try:
-#             #         msg = await wc.get_msg(timeout=9999)
-#             #         print("Received:", msg)
-#             #     except Exception as ex:
-#             #         print("get_msg got an error", ex)
-#             #         break
-#
+            #
+            #             # print("Sending: world")
+            #             # await wc.send_str("world")
+            #
+            #             # print("Flushing...")
+            #             # await wc.flush_incoming(timeout=1)
+            #             # print("\tFlushed.")
+            #
+            #             # print("Sending: foobar")
+            #             # await wc.send_str("foobar")
+            #
+            #             # msg = await wc.get_msg()
+            #             # print("Received:", msg)
+            #             # try:
+            #             #     msg = await wc.get_msg(timeout=1)
+            #             # except asyncio.futures.TimeoutError as te:
+            #             #     print("Timeout:", te)
+            #             # else:
+            #             #     print("Received:", msg)
+            #
+            #             # while True:
+            #             #     try:
+            #             #         msg = await wc.get_msg(timeout=9999)
+            #             #         print("Received:", msg)
+            #             #     except Exception as ex:
+            #             #         print("get_msg got an error", ex)
+            #             #         break
+            #
             counter = 0
             async for msg in wc:
                 counter += 1
@@ -196,7 +195,7 @@ class WebsocketClient():
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self._session.close()
 
-    def __aiter__(self):
+    def __aiter__(self) -> AsyncIterator[aiohttp.WSMessage]:
         return self
 
     async def __anext__(self) -> aiohttp.WSMessage:
@@ -212,8 +211,6 @@ class WebsocketClient():
             raise msg
 
         return msg
-
-
 
 
 if __name__ == "__main__":
