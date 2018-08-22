@@ -43,9 +43,7 @@ class Main:
 
         ioloop = asyncio.new_event_loop()
         asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
-        t = threading.Thread(target=partial(_run, ioloop))
-        t.daemon = True  # won't hang app when it closes
-        t.start()  # Server will connect now
+        threading.Thread(target=partial(_run, ioloop), daemon=True).start()
 
     def connection_made(self, transport):
         print("connection_made")
