@@ -110,9 +110,9 @@ class FormattableTkStringVar(tk.StringVar):
         :param str str_format: the string format, eg, "Age: {}"
         :param var_list: the list of tk.xxxVar objects that feed into the string format
         """
-        tk.StringVar.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self._format = str_format
-        self._vars = [v for v in vars]
+        self._vars = list(vars)
 
         for v in self._vars:
             v.trace("w", self.var_changed)  # Bind to all underlying vars
