@@ -7,6 +7,7 @@ Source: https://github.com/rharder/handy
 August 2018 - Initial creation
 """
 import asyncio
+import os
 import pprint
 import webbrowser
 
@@ -20,7 +21,7 @@ __license__ = "Public Domain"
 def main():
     web_url = "https://demos.telerik.com/kendo-ui/grid/web-socket"
     ws_url = "wss://kendoui-ws-demo.herokuapp.com/"
-    proxy = None
+    proxy = os.environ.get("https_proxy") or os.environ.get("http_proxy")
 
     webbrowser.open(web_url)
 

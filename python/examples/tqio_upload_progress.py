@@ -5,6 +5,7 @@ Illustrates how to have upload progress using tqdm and aiohttp.
 PasteBin: http://pastebin.com/ksEfNJZN
 """
 import asyncio
+import os
 
 import aiohttp
 
@@ -21,8 +22,8 @@ def main():
     loop.close()
 
 
-@asyncio.coroutine
-def run():
+async def run():
+    proxy = os.environ.get("https_proxy") or os.environ.get("http_proxy")
     session = aiohttp.ClientSession()
 
     # Upload a multipart form file normally
@@ -32,14 +33,12 @@ def run():
     # print(file_url)
 
     # Upload a multipart form file with a progress indicator
-    print()
     with tqio(__file__, slow_it_down=True) as f:
-        resp = yield from session.post("https://transfer.sh/", data={"file": f})
-    file_url = yield from resp.text()
-    print()
+        resp = await session.post("https://transfer.sh/", data={"file": f}, proxy=proxy)
+    file_url = await resp.text()
     print(file_url)
 
-    yield from session.close()
+    await session.close()
 
 
 if __name__ == '__main__':

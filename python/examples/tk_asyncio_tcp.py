@@ -29,12 +29,12 @@ class Main:
         tk.Label(tk_root, textvariable=self.lbl_var).pack()
 
         # Prepare coroutine to connect server
-        self.transport = None  # type: asyncio.WriteTransport
+        self.transport = None  # type: asyncio.StreamWriter
 
-        @asyncio.coroutine
-        def _connect():
+        async def _connect():
+            # print("_connect thread:", threading.get_ident(), flush=True)
             loop = asyncio.get_event_loop()  # Pulls the new event loop because that is who launched this coroutine
-            yield from loop.create_server(lambda: self, "127.0.0.1", 9999)
+            await loop.create_server(lambda: self, "127.0.0.1", 9999)
 
         # Thread that will handle io loop
         def _run(loop):
@@ -44,6 +44,7 @@ class Main:
         ioloop = asyncio.new_event_loop()
         asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
         threading.Thread(target=partial(_run, ioloop), daemon=True).start()
+        # print("__init__ thread:", threading.get_ident(), flush=True)
 
     def connection_made(self, transport):
         print("connection_made")
@@ -56,10 +57,11 @@ class Main:
         print("eof_received")
 
     def data_received(self, data):
+        # print("data_received thread:", threading.get_ident(), flush=True)
         data_string = data.decode()
         print("data_received", data_string.strip())
         self.transport.write("RECVD: {}\n".format(data_string).encode())
-        self.lbl_var.set(data_string.strip())
+        self.lbl_var.set(data_string.strip())  # Works even though it's not on main event thread
 
 
 if __name__ == "__main__":

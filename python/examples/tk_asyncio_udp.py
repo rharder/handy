@@ -31,10 +31,10 @@ class Main:
         # Prepare coroutine to connect server
         self.transport = None  # type: asyncio.DatagramTransport
 
-        @asyncio.coroutine
-        def _connect():
+        async def _connect():
+            # print("_connect thread:", threading.get_ident(), flush=True)
             loop = asyncio.get_event_loop()  # Pulls the new event loop because that is who launched this coroutine
-            yield from loop.create_datagram_endpoint(lambda: self, local_addr=("0.0.0.0", 9999))
+            await loop.create_datagram_endpoint(lambda: self, local_addr=("0.0.0.0", 9999))
 
         # Thread that will handle io loop
         def _run(loop):
@@ -43,9 +43,8 @@ class Main:
 
         ioloop = asyncio.new_event_loop()
         asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
-        t = threading.Thread(target=partial(_run, ioloop))
-        t.daemon = True  # won't hang app when it closes
-        t.start()  # Server will connect now
+        threading.Thread(target=partial(_run, ioloop), daemon=True).start()
+        # print("__init__ thread:", threading.get_ident(), flush=True)
 
     def connection_made(self, transport):
         print("connection_made")
@@ -55,6 +54,7 @@ class Main:
         print("connection_lost")
 
     def datagram_received(self, data, addr):
+        # print("data_received thread:", threading.get_ident(), flush=True)
         data_string = data.decode()
         print("datagram_received", data_string.strip(), addr)
         self.transport.sendto("RECVD: {}".format(data_string).encode(), addr=addr)

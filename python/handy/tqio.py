@@ -21,6 +21,7 @@ class tqio(io.BufferedReader):
 
     def __init__(self, file_path, descr=None, slow_it_down=False):
         super().__init__(open(file_path, "rb"))
+        print(end="", flush=True)  # Flush output buffer to help tqdm
         self.t = tqdm(desc=descr,
                       unit="bytes",
                       unit_scale=True,

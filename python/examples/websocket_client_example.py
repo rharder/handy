@@ -8,6 +8,7 @@ August 2018 - Initial creation
 """
 import asyncio
 import json
+import os
 from concurrent import futures
 
 from handy.websocket_client import WebsocketClient
@@ -19,7 +20,7 @@ __license__ = "Public Domain"
 
 def main():
     url = "wss://demos.kaazing.com/echo"
-    proxy = None
+    proxy = os.environ.get("https_proxy") or os.environ.get("http_proxy")
 
     async def _run():
         async with WebsocketClient(url, proxy=proxy, verify_ssl=False) as wc:
@@ -56,7 +57,7 @@ def main():
                 async for msg in wc.timeout(1):
                     print("Received:", msg.data)
             except futures.TimeoutError:  # Specifically, concurrent.futures.TimeoutError
-                pass
+                print("Timed out.")
 
             # print("Entering an async for loop.  The program will stay here indefinitely, waiting for future messages.")
             # async for msg in wc:
