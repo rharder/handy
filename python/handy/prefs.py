@@ -10,7 +10,7 @@ import sys
 import appdirs  # pip install appdirs
 
 
-class Prefs(object):
+class Prefs:
     """
     Handles saving preferences between occurrences of running the script.
     """

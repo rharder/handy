@@ -17,7 +17,7 @@ __date__ = "5 Dec 2016"
 __license__ = "Public Domain"
 
 
-class Var(object):
+class Var:
     """
     Represents a variable that can bind listeners to changes in its state.
 

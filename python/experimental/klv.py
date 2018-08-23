@@ -92,7 +92,7 @@ BIG_ENDIAN = 'big'
 INT_FORMAT_REGEX = re.compile("^(u?)int([0-9]+)$")
 
 
-class KLV(object):
+class KLV:
     def __init__(self,
                  key=None,
                  value=None,

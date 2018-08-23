@@ -5,7 +5,7 @@ Easy to use Websocket Server.
 Source: https://github.com/rharder/handy
 
 June 2018 - Updated for aiohttp v3.3
-August 2018 - Updated for Python 3.7
+August 2018 - Updated for Python 3.7, made WsServer support multiple routes on one port
 """
 import asyncio
 import weakref
@@ -21,7 +21,7 @@ __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 
 
-class WsServerMultiRoutes(object):
+class WsServerMultiRoutes:
     """Hosts a websocket server on a given port and responds to multiple routes
     (relative urls) at that address.
 
@@ -193,7 +193,7 @@ class WsServerMultiRoutes(object):
             await func(ws, msg)
 
 
-class WsHandler(object):
+class WsHandler:
 
     async def on_websocket(self, ws: web.WebSocketResponse):
         """
