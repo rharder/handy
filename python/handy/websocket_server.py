@@ -24,6 +24,12 @@ __license__ = "Public Domain"
 class WebServer:
     """Hosts a web/websocket server on a given port and responds to multiple routes
     (relative urls) at that address.
+
+
+    Source: https://github.com/rharder/handy
+    Author: Robert Harder
+    License: Public Domain
+
     """
 
     def __init__(self, host: str = None, port: int = None):
