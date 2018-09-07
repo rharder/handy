@@ -41,8 +41,9 @@ class Main:
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        ioloop = asyncio.new_event_loop()
-        asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
+        ioloop = asyncio.new_event_loop()  # type: asyncio.BaseEventLoop
+        ioloop.create_task(_connect())
+        # asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
         threading.Thread(target=partial(_run, ioloop), daemon=True).start()
         # print("__init__ thread:", threading.get_ident(), flush=True)
 

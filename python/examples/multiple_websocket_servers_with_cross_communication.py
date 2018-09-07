@@ -13,13 +13,15 @@ Still working on aiohttp v3.3 changes - June 2018
 import asyncio
 import datetime
 import random
+import sys
 import time
+import traceback
 import webbrowser
 
 import aiohttp
 from aiohttp import web
 
-from handy.websocket_server import WsHandler, WsServerMultiRoutes
+from handy.websocket_server import WebsocketHandler, WebServer
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -28,7 +30,7 @@ __license__ = "Public Domain"
 
 def main():
     # Create servers
-    server = WsServerMultiRoutes(port=9990)
+    server = WebServer(port=9990)
     cap_hndlr = CapitalizeEchoHandler()
     rnd_hdnlr = RandomQuoteHandler(interval=2)
 
@@ -55,7 +57,8 @@ def main():
             # print("Alert loop:", id(asyncio.get_event_loop()))
             print("Broadcasting alert:", msg)
             msg_dict = {"alert": str(msg)}
-            await server.broadcast_json(msg_dict)
+            await cap_hndlr.broadcast_json(msg_dict)
+            await rnd_hdnlr.broadcast_json(msg_dict)
 
         # await server.close()
         # print("alert coroutine closed server and is exiting")
@@ -67,21 +70,21 @@ def main():
         loop.run_forever()
     except KeyboardInterrupt:
         print("keyboard interrupt")
-        loop.run_until_complete(server.close())
+        loop.run_until_complete(server.shutdown())
 
         loop.close()
     print("loop.run_forever() must have finished")
 
 
-class CapitalizeEchoHandler(WsHandler):
+class CapitalizeEchoHandler(WebsocketHandler):
     """ Echoes back to client whatever they sent, but capitalized. """
 
-    async def on_websocket(self, ws: web.WebSocketResponse):
+    async def on_websocket(self, route:str, ws: web.WebSocketResponse):
         """Identify the demo server"""
         await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
-        await super().on_websocket(ws)
+        await super().on_websocket(route, ws)
 
-    async def on_message(self, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
+    async def on_message(self, route:str, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
         print("Capitalize response loop:", id(asyncio.get_event_loop()))
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
             cap = str(ws_msg_from_client.data).upper()
@@ -93,7 +96,7 @@ class CapitalizeEchoHandler(WsHandler):
             raise Exception(str(ws_msg_from_client))
 
 
-class RandomQuoteHandler(WsHandler):
+class RandomQuoteHandler(WebsocketHandler):
     """ Sends a random quote to the client every so many seconds. """
     QUOTES = ["Wherever you go, there you are.",
               "80% of all statistics are made up.",
@@ -104,7 +107,7 @@ class RandomQuoteHandler(WsHandler):
         self.interval = interval
         self.count = count
 
-    async def on_websocket(self, ws: web.WebSocketResponse):
+    async def on_websocket(self, route:str, ws: web.WebSocketResponse):
         """
         Override this function if you want to handle new incoming websocket clients.
         The default behavior is to listen indefinitely for incoming messages from clients
@@ -135,16 +138,16 @@ class RandomQuoteHandler(WsHandler):
 
                 except Exception as ex:
                     print("Exception", ex)
-                    ex.with_traceback()
+                    traceback.print_tb(sys.exc_info()[2])
                     return
 
         asyncio.create_task(_regular_interval())
-        await super().on_websocket(ws)  # Block here until socket dies
+        await super().on_websocket(route, ws)  # Block here until socket dies
 
         # print("on_websocket last line within RandomQuoteServer", self)
 
 
-# class TimeOfDayHandler(WsHandler):
+# class TimeOfDayHandler(WebsocketHandler):
 #     """ Sends a message to all clients simultaneously about time of day. """
 #
 #     def __init__(self, interval: float = 2, *kargs, **kwargs):
