@@ -5,6 +5,7 @@ Illustrates using the streaming response in aiohttp.
 import asyncio
 import datetime
 import random
+import ssl
 import sys
 import time
 import traceback
@@ -22,8 +23,14 @@ __license__ = "Public Domain"
 
 def main():
     # Create servers
-    port = 9990
-    server = WebServer(port=port)
+    port = 443
+
+    # sslcontext = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+    sslcontext = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # sslcontext = ssl.create_default_context()
+    sslcontext.load_cert_chain('server.crt', 'server.key')
+
+    server = WebServer(port=port, ssl_context=sslcontext)
     stream_handler = StreamResponseHandler()
     server.add_route("/", stream_handler)
 
@@ -32,7 +39,7 @@ def main():
     loop.create_task(server.start())
 
     # Open web pages to test them
-    url = "http://localhost:{}/".format(port)
+    url = "https://localhost:{}/".format(port)
     webbrowser.open(url)
 
     # Run event loop
