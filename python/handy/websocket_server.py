@@ -113,13 +113,10 @@ class WebServer:
         self.close_current_connections()
         self._running = False
         self._shutting_down = False
-        print("_on_shutdown exiting")
 
     def close_current_connections(self):
-        while self.app["requests"]:
-            x = self.app["requests"].pop()
-            if x and x.transport and not x.transport.is_closing():
-                print("Closing", x)
+        for x in self.app["requests"]:
+            if x is not None and x.transport is not None:
                 x.transport.close()
 
     def add_route(self, route: str, handler):
@@ -170,7 +167,7 @@ class WebsocketHandler(WebHandler):
         # https://docs.aiohttp.org/en/stable/faq.html#how-do-i-programmatically-close-a-websocket-server-side
         ws_closers = [ws.close() for ws in set(self.websockets) if not ws.closed]
         ws_closers and await asyncio.gather(*ws_closers)
-        print("close_websockets exiting")
+        # print("close_websockets exiting")
 
     async def on_incoming_http(self, route: str, request: web.BaseRequest):
         """Handles the incoming HTTP(S) request and converts it to a WebSocketResponse.
@@ -184,7 +181,6 @@ class WebsocketHandler(WebHandler):
             await self.on_websocket(route, ws)
         finally:
             self.websockets.discard(ws)
-            print("Departing WebsocketHandler.on_incoming_http")
 
         return ws
 
