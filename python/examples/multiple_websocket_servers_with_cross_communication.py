@@ -32,12 +32,16 @@ def main():
     # Create servers
     server = WebServer(port=9990)
     cap_hndlr = CapitalizeEchoHandler()
-    rnd_hdnlr = RandomQuoteHandler(interval=2)
+    rnd_hndlr = RandomQuoteHandler(interval=2)
+    tim_hndlr = TimeOfDayHandler()
 
     server.add_route("/cap", cap_hndlr)
-    server.add_route("/rnd", rnd_hdnlr)
+    server.add_route("/rnd", rnd_hndlr)
+    server.add_route("/time", tim_hndlr)
 
     # Queue their start operation
+    loop = asyncio.ProactorEventLoop()
+    asyncio.set_event_loop(loop)
     loop = asyncio.get_event_loop()
     loop.create_task(server.start())
     # loop.create_task(server.start())
@@ -52,13 +56,14 @@ def main():
 
     # Queue a simulated broadcast-to-all message
     async def _alert_all(msg, delay=0, num=1):
-        for _ in range(num,0,-1):
+        for _ in range(num, 0, -1):
             await asyncio.sleep(delay)
             # print("Alert loop:", id(asyncio.get_event_loop()))
             print("Broadcasting alert:", msg)
             msg_dict = {"alert": str(msg)}
             await cap_hndlr.broadcast_json(msg_dict)
-            await rnd_hdnlr.broadcast_json(msg_dict)
+            await rnd_hndlr.broadcast_json(msg_dict)
+            await tim_hndlr.broadcast_json(msg_dict)
 
         # await server.close()
         # print("alert coroutine closed server and is exiting")
@@ -79,18 +84,19 @@ def main():
 class CapitalizeEchoHandler(WebsocketHandler):
     """ Echoes back to client whatever they sent, but capitalized. """
 
-    async def on_websocket(self, route:str, ws: web.WebSocketResponse):
+    async def on_websocket(self, route: str, ws: web.WebSocketResponse):
         """Identify the demo server"""
         await ws.send_str("Connected to demo {}".format(self.__class__.__name__))
         await super().on_websocket(route, ws)
 
-    async def on_message(self, route:str, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
+    async def on_message(self, route: str, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
         # print("Capitalize response loop:", id(asyncio.get_event_loop()))
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
             cap = str(ws_msg_from_client.data).upper()
             await ws.send_str(cap)
         elif ws_msg_from_client.type == web.WSMsgType.CLOSE:
-            print("Received 'CLOSE' message from websocket")
+            pass
+            # print("Received 'CLOSE' message from websocket")
         else:
             print("Some other message:", ws_msg_from_client)
             # raise Exception(str(ws_msg_from_client))
@@ -107,7 +113,7 @@ class RandomQuoteHandler(WebsocketHandler):
         self.interval = interval
         self.count = count
 
-    async def on_websocket(self, route:str, ws: web.WebSocketResponse):
+    async def on_websocket(self, route: str, ws: web.WebSocketResponse):
         """
         Override this function if you want to handle new incoming websocket clients.
         The default behavior is to listen indefinitely for incoming messages from clients
@@ -147,36 +153,29 @@ class RandomQuoteHandler(WebsocketHandler):
         # print("on_websocket last line within RandomQuoteServer", self)
 
 
-# class TimeOfDayHandler(WebsocketHandler):
-#     """ Sends a message to all clients simultaneously about time of day. """
-#
-#     def __init__(self, interval: float = 2, *kargs, **kwargs):
-#         super().__init__(*kargs, **kwargs)
-#         self.interval = interval
-#         # self.task = None  # type: asyncio.Task
-#
-#     async def start(self, *kargs, **kwargs):
-#         await super().start(*kargs, **kwargs)
-#
-#         async def _regular_interval():
-#             # counter = 0
-#             while self.running and not self.shutting_down:
-#                 # if counter >= 5:
-#                 #     await self.close()
-#                 #     print("closed myself", self)
-#                 #     break
-#                 if int(time.time()) % self.interval == 0:  # Only on the x second mark
-#                     timestamp = "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now())
-#                     await self.broadcast_json({"timestamp": timestamp})
-#                     # counter += 1
-#                 await asyncio.sleep(1)
-#
-#         # self.task = asyncio.create_task(_regular_interval())
-#         asyncio.create_task(_regular_interval())
-#
-#     async def close(self):
-#         # self.task.cancel()
-#         await super().close()
+class TimeOfDayHandler(WebsocketHandler):
+    """ Sends a message to all clients simultaneously about time of day. """
+
+    def __init__(self, interval: float = 2, *kargs, **kwargs):
+        super().__init__(*kargs, **kwargs)
+        self.interval = interval
+        self.task = None  # type: asyncio.Task
+
+    async def on_websocket(self, route: str, ws: web.WebSocketResponse):
+
+        # Lazily start up the time ticker, but notice that all connections
+        # receive the broadcast simultaneously.
+        async def _regular_interval():
+            while True:
+                if int(time.time()) % self.interval == 0:  # Only on the x second mark
+                    timestamp = "{:%Y-%m-%d %H:%M:%S}".format(datetime.datetime.now())
+                    await self.broadcast_json({"timestamp": timestamp})
+                await asyncio.sleep(1)
+
+        if not self.task:
+            self.task = asyncio.create_task(_regular_interval())
+
+        return await super().on_websocket(route, ws)
 
 
 if __name__ == "__main__":

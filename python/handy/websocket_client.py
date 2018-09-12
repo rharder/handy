@@ -63,8 +63,8 @@ class WebsocketClient():
                             on_message(client, msg)
 
             except Exception as ex:
-                print(ex)
-                traceback.print_tb(sys.exc_info()[2])
+                print(ex, file=sys.stderr, flush=True)
+                # traceback.print_tb(sys.exc_info()[2])
             finally:
                 if on_close:
                     if asyncio.iscoroutinefunction(on_close):
