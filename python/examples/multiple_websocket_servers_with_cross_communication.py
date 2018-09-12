@@ -85,15 +85,15 @@ class CapitalizeEchoHandler(WebsocketHandler):
         await super().on_websocket(route, ws)
 
     async def on_message(self, route:str, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
-        print("Capitalize response loop:", id(asyncio.get_event_loop()))
+        # print("Capitalize response loop:", id(asyncio.get_event_loop()))
         if ws_msg_from_client.type == web.WSMsgType.TEXT:
             cap = str(ws_msg_from_client.data).upper()
-            # cap = self.transform(str(ws_msg_from_client.data))
             await ws.send_str(cap)
-        elif ws_msg_from_client.type == web.WSMsgType.CLOSING:
-            print("Received 'closing' message of websocket")
+        elif ws_msg_from_client.type == web.WSMsgType.CLOSE:
+            print("Received 'CLOSE' message from websocket")
         else:
-            raise Exception(str(ws_msg_from_client))
+            print("Some other message:", ws_msg_from_client)
+            # raise Exception(str(ws_msg_from_client))
 
 
 class RandomQuoteHandler(WebsocketHandler):
