@@ -22,12 +22,13 @@ __author__ = "Robert Harder"
 
 ECHO_WS_URL = "wss://echo.websocket.org"
 PROXY = os.environ.get("https_proxy") or os.environ.get("http_proxy")
+
+
 # ECHO_WS_URL = "ws://localhost:9990/cap"
 # PROXY = None
 
 # logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
-
 
 # PROXY = None
 

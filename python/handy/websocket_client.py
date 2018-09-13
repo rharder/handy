@@ -82,11 +82,16 @@ class WebsocketClient():
         asyncio.run_coroutine_threadsafe(_run(), loop or asyncio.get_event_loop())
 
     async def _create_session(self) -> aiohttp.ClientSession:
+
+        # TCP options
         aio_connector = None  # type: aiohttp.TCPConnector
         if self.verify_ssl is not None and self.verify_ssl is False:
             aio_connector = aiohttp.TCPConnector(ssl=False)
+
+        # Create session
         session = aiohttp.ClientSession(headers=self.headers, connector=aio_connector)
         self.log.debug("Created session {}".format(id(session)))
+
         return session
 
     async def close(self):
@@ -167,7 +172,7 @@ class WebsocketClient():
         """
         asyncio.run_coroutine_threadsafe(self.flush_incoming(timeout=timeout), self.loop)
 
-    async def get_msg(self, timeout: float = None) -> aiohttp.WSMessage:
+    async def next_msg(self, timeout: float = None) -> aiohttp.WSMessage:
         """Returns the next message from the websocket server.
 
          This method may throw a StopAsyncIteration exception if the socket
@@ -183,12 +188,17 @@ class WebsocketClient():
                 raise msg
             return msg
         else:
-            msg = await asyncio.wait_for(self.get_msg(), timeout=timeout)
+            msg = await asyncio.wait_for(self.next_msg(), timeout=timeout)
             return msg
 
     async def __aenter__(self):
+        """
+        :rtype: WebsocketClient
+        """
         self.loop = asyncio.get_event_loop()
         self._queue = asyncio.Queue()
+
+        # Make connection
         try:
             self._session = self._session or await self._create_session()
             self.socket = await self._session.ws_connect(self.url, proxy=self.proxy)
@@ -199,6 +209,7 @@ class WebsocketClient():
                 self._session = None
             raise ex
 
+        # Set up listener to receive messages and put them in a queue
         async def _listen_for_messages():
             try:
 
@@ -227,7 +238,7 @@ class WebsocketClient():
     def __aiter__(self) -> AsyncIterator[aiohttp.WSMessage]:
         return WebsocketClient._Iterator(self)
 
-    def timeout(self, timeout=None):
+    def with_timeout(self, timeout=None) -> AsyncIterator[aiohttp.WSMessage]:
         """Enables the async for loop to have a timeout.
 
         async for msg in client.timeout(1):
@@ -235,7 +246,7 @@ class WebsocketClient():
         """
         return WebsocketClient._Iterator(self, timeout=timeout)
 
-    class _Iterator:
+    class _Iterator(AsyncIterator):
         def __init__(self, ws_client, timeout: float = None):
             self.timeout = timeout
             self.ws_client = ws_client  # type: WebsocketClient
@@ -247,4 +258,4 @@ class WebsocketClient():
             if self.ws_client.socket.closed:
                 raise StopAsyncIteration("The websocket has closed.")
 
-            return await self.ws_client.get_msg(timeout=self.timeout)
+            return await self.ws_client.next_msg(timeout=self.timeout)

@@ -29,7 +29,7 @@ def main():
             word = "hello"
             print("Sending:", word)
             await wc.send_str(word)
-            msg = await wc.get_msg()
+            msg = await wc.next_msg()
             print("Received:", msg.data)
             print()
 
@@ -39,7 +39,7 @@ def main():
             data["direction"] = "north"
             print("Sending dictionary as json data:", data)
             await wc.send_json(json.dumps(data))
-            msg = await wc.get_msg()
+            msg = await wc.next_msg()
             print("Received text string:", msg.data)
             resp_data = json.loads(msg.data)
             print("\tConverted back to dictionary:", resp_data)
@@ -54,7 +54,7 @@ def main():
             print("Entering an async for loop with a 1 second timeout for each subsequent message.")
             print("There should be three websocket messages waiting for us.")
             try:
-                async for msg in wc.timeout(1):
+                async for msg in wc.with_timeout(1):
                     print("Received:", msg.data)
             except futures.TimeoutError:  # Specifically, concurrent.futures.TimeoutError
                 print("Timed out.")
