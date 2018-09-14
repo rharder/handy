@@ -19,8 +19,8 @@ __license__ = "Public Domain"
 class tqio(io.BufferedReader):
     SLOW_DELAY = 0.1
 
-    def __init__(self, file_path, descr=None, slow_it_down=False):
-        super().__init__(open(file_path, "rb"))
+    def __init__(self, file_path, descr=None, slow_it_down=False, **kwargs):
+        super().__init__(open(file_path, "rb", **kwargs))
         print(end="", flush=True)  # Flush output buffer to help tqdm
         self.t = tqdm(desc=descr,
                       unit="bytes",
