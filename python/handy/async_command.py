@@ -4,10 +4,12 @@
 Tools for running command line processes compatibly with asyncio.
 """
 import asyncio
+import logging
 import sys
 import threading
 import time
 import traceback
+import weakref
 from functools import partial
 from typing import Callable, AsyncIterator, Iterable
 
@@ -27,17 +29,21 @@ def main():
 
 
 class AsyncReadConsole:
+    """An AsyncIterator that reads from the console."""
 
-    def __init__(self):
-        self.queue = asyncio.Queue()
+    def __init__(self, prompt=None):
+        self.queue = asyncio.Queue()  # type: asyncio.Queue
         self.loop = None  # type: asyncio.BaseEventLoop
+        self.thread = None  # type: threading.Thread
+        self.prompt = prompt or "Input (^D or EOF to quit): "
+        self.log = logging.getLogger(__name__ + "." + self.__class__.__name__)
 
     def __aiter__(self):
         def _thread_run():
             while True:
                 try:
                     time.sleep(0.1)
-                    line = input("Input (^D or EOF to quit): ").rstrip()
+                    line = input(self.prompt).rstrip()
                     # line = input().rstrip()
                 except EOFError as ex:
                     asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
@@ -46,34 +52,55 @@ class AsyncReadConsole:
                     if self.loop:
                         asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
                     else:
-                        print("NO LOOP YET DETERMINED IN AsyncReadConsole!")
+                        self.log.warning("NO LOOP YET DETERMINED IN AsyncReadConsole!")
                         # is this actually possible?
                     break
                 else:
                     if self.loop:
                         asyncio.run_coroutine_threadsafe(self.queue.put(line), self.loop)
                     else:
-                        print("NO LOOP YET DETERMINED IN AsyncReadConsole!")
+                        self.log.warning("NO LOOP YET DETERMINED IN AsyncReadConsole!")
 
-        threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True).start()
+        if self.thread is None:
+            self.thread = threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True)
+            self.thread.start()
         return self
 
     async def __anext__(self):
         self.loop = asyncio.get_event_loop()
-        line = await self.queue.get()
+        line = await self.readline()
         if line is None:
             raise StopAsyncIteration()
         else:
             return line
 
+    async def readline(self):
+        return await self.queue.get()
 
-async def async_execute_command(cmd, args: Iterable = (), provide_stdin: AsyncIterator = None,
+
+async def async_execute_command(cmd, args: Iterable = (),
+                                provide_stdin: AsyncIterator = None,
                                 handle_stdout: Callable = None,
                                 handle_stderr: Callable = None, daemon=True):
     parent_loop = asyncio.get_event_loop()
+    parent_loop_tasks = weakref.WeakSet()
     done_flag = asyncio.Queue()
+    callback_queue = asyncio.Queue()
 
-    # proc_loop = None  # type: asyncio.BaseEventLoop
+    async def _monitor_callback_queue():
+        await asyncio.sleep(1)
+        while True:
+            x = await callback_queue.get()
+            if x is None:
+                break
+            check = x.func if isinstance(x, partial) else x
+            if asyncio.iscoroutinefunction(check):
+                await x()
+            else:
+                x()
+
+    parent_loop_tasks.add(asyncio.create_task(_monitor_callback_queue()))
+
     if sys.platform == 'win32':
         proc_loop = asyncio.ProactorEventLoop()
     else:
@@ -81,16 +108,10 @@ async def async_execute_command(cmd, args: Iterable = (), provide_stdin: AsyncIt
         asyncio.get_child_watcher()  # Main loop
 
     def _thread_run(loop: asyncio.BaseEventLoop):
-        async def __run():
+        # Running on thread that will host proc_loop
 
-            async def __call_callback(__func, *kargs, **kwargs):
-                if asyncio.iscoroutinefunction(__func):
-                    if parent_loop == asyncio.get_event_loop():
-                        await __func(*kargs, **kwargs)
-                    else:
-                        asyncio.run_coroutine_threadsafe(__func(*kargs, **kwargs), parent_loop)
-                else:
-                    __func(*kargs, **kwargs)
+        async def __run():
+            # Running within proc_loop
 
             try:
                 print("Launching", cmd, *args, flush=True)
@@ -101,23 +122,23 @@ async def async_execute_command(cmd, args: Iterable = (), provide_stdin: AsyncIt
                     stderr=asyncio.subprocess.PIPE)
 
                 async def __process_output(_out: asyncio.StreamReader, _output_callback: Callable):
-                    # This gets called on the proc_loop
+                    # Runs within proc_loop
                     while True:
                         line = await _out.readline()
                         if line:
-                            await __call_callback(_output_callback, line)
+                            part = partial(_output_callback, line)
+                            asyncio.run_coroutine_threadsafe(callback_queue.put(part), parent_loop)
                         else:
                             break
 
                 async def __receive_input(_input_provider: AsyncIterator[str]):
-                    # This gets called on the parent_loop
+                    # Runs in parent_loop
                     async for __line in _input_provider:
                         proc.stdin.write("{}\n".format(__line).encode())
                     proc.stdin.write_eof()
 
                 tasks = []
                 if provide_stdin:
-                    # tasks.append(asyncio.create_task(__receive_input(provide_stdin)))
                     asyncio.run_coroutine_threadsafe(__receive_input(provide_stdin), parent_loop)
                 if handle_stdout:
                     tasks.append(asyncio.create_task(__process_output(proc.stdout, handle_stdout)))
@@ -140,7 +161,9 @@ async def async_execute_command(cmd, args: Iterable = (), provide_stdin: AsyncIt
 
     # Launch process is another thread, and wait for it to complete
     threading.Thread(target=partial(_thread_run, proc_loop), name="Thread-proc", daemon=daemon).start()
-    await done_flag.get()
+    await done_flag.get()  # Waiting for proc_loop thread to finish
+    await callback_queue.put(None)  # Signal that no more callbacks will be called
+    await asyncio.gather(*parent_loop_tasks)  # Wait for all callbacks to finish
 
 
 if __name__ == "__main__":
