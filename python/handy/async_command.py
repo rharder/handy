@@ -17,6 +17,7 @@ __license__ = "Public Domain"
 
 
 def main():
+    # An example
     loop = asyncio.get_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(
@@ -36,8 +37,8 @@ class AsyncReadConsole:
             while True:
                 try:
                     time.sleep(0.1)
-                    # line = input("Input (^D or EOF to quit): ").rstrip()
-                    line = input().rstrip()
+                    line = input("Input (^D or EOF to quit): ").rstrip()
+                    # line = input().rstrip()
                 except EOFError as ex:
                     asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
                     break
