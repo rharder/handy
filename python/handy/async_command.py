@@ -144,10 +144,10 @@ async def async_execute_command(cmd, args: Iterable = (),
                     tasks.append(asyncio.create_task(__process_output(proc.stdout, handle_stdout)))
                 if handle_stderr:
                     tasks.append(asyncio.create_task(__process_output(proc.stderr, handle_stderr)))
-                else:
-                    tasks.append(asyncio.create_task(
-                        __process_output(proc.stderr,
-                                         lambda x: print(x.decode().rstrip(), file=sys.stderr, flush=True))))
+                # else:
+                #     tasks.append(asyncio.create_task(
+                #         __process_output(proc.stderr,
+                #                          lambda x: print(x.decode().rstrip(), file=sys.stderr, flush=True))))
 
                 await asyncio.gather(*tasks)
 
