@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 A collection of functions and classes to help with tkinter.
 Source: https://github.com/rharder/handy
@@ -11,7 +12,6 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "10 Oct 2017"
 __license__ = "Public Domain"
-
 
 
 def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):
@@ -88,6 +88,7 @@ def bind_tk_var_to_property(obj, prop_name, tkvar):
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: setattr(obj, prop_name, v.get()))
 
+
 class FormattableTkStringVar(tk.StringVar):
     """
     An extension of the tk.StringVar that takes a formattable string, eg, "Age: {}" and a list
@@ -151,7 +152,7 @@ class BindableTextArea(tk.scrolledtext.ScrolledText):
             """ At conclusion of operation, resume the trace. """
             self.__parent._trace_id = self.__parent._textvariable.trace("w", self.__parent._variable_value_changed)
 
-    def __init__(self, parent, textvariable: tk.StringVar = None, **kwargs):
+    def __init__(self, parent, textvariable: tk.StringVar = None, autoscroll=True, **kwargs):
         tk.scrolledtext.ScrolledText.__init__(self, parent, **kwargs)
         self._textvariable = None  # type: tk.StringVar
         self._trace_id = None
@@ -160,6 +161,7 @@ class BindableTextArea(tk.scrolledtext.ScrolledText):
         else:
             self.textvariable = textvariable
         self.bind("<KeyRelease>", self._key_released)
+        self.autoscroll = autoscroll
 
     @property
     def textvariable(self):
@@ -185,6 +187,9 @@ class BindableTextArea(tk.scrolledtext.ScrolledText):
         text = self._textvariable.get()
         self.delete("1.0", tk.END)
         self.insert(tk.END, text)
+
+        if self.autoscroll:
+            self.see(tk.END)
 
         # Restore previous state, whatever that was
         self["state"] = prev_state
@@ -294,7 +299,6 @@ class ToolTip:
             self.textvariable.trace("w", lambda _, __, ___, v=self.textvariable: setattr(self, "text", str(v.get())))
             self.text = str(self.textvariable.get())
 
-
     def enter(self, event=None):
         self.schedule()
 
@@ -332,4 +336,3 @@ class ToolTip:
         self.tw = None
         if tw:
             tw.destroy()
-
