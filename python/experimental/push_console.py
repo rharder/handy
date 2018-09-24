@@ -26,10 +26,10 @@ def main():
     # An example
     loop = asyncio.get_event_loop()
 
-    loop.create_task(run_console())
+    # loop.create_task(run_console())
     loop.run_until_complete(run_cmd_server())
 
-    loop.run_forever()
+    # loop.run_forever()
 
 
 async def run_console():
@@ -104,43 +104,58 @@ async def run_cmd_server():
             msg = {"type": "console", "status": "command server connected to pushbullet"}
             await pb.async_push_ephemeral(msg)
 
-            async with LiveStreamListener(pb, types="ephemeral:console") as lsl:
+            # async with LiveStreamListener(pb, types="ephemeral:console") as lsl:
 
-                async def _output_flusher(_q, name):
-                    # name is from_stdout or from_stderr
-                    while True:
-                        lines = []
-                        while len(lines) < 20:
-                            try:
-                                if lines:
-                                    # If we have something to send, wait only a moment
-                                    # to see if there's anything else coming.
-                                    line = await asyncio.wait_for(_q.get(), timeout=0.1)
-                                else:
-                                    # If we have an empty queue, no need for the timeout
-                                    line = await _q.get()
-
-                            except asyncio.TimeoutError:
-                                break  # while loop for length of lines
+            async def _output_flusher(_q, name):
+                # name is from_stdout or from_stderr
+                while True:
+                    lines = []
+                    while len(lines) < 20:
+                        try:
+                            if lines:
+                                # If we have something to send, wait only a moment
+                                # to see if there's anything else coming.
+                                # print("Waiting with timeout", name)
+                                line = await asyncio.wait_for(_q.get(), timeout=0.25)
                             else:
-                                if line is None:
-                                    return  # We're done!
+                                # print("Waiting without timeout", name)
+                                # If we have an empty queue, no need for the timeout
+                                line = await _q.get()
+
+                        except asyncio.TimeoutError:
+                            print("TE")
+                            break
+                            # break  # while loop for length of lines
+                        else:
+                            print(f"LINE: {line}")
+                            if line is None:
+                                print("We're done!", name)
+                                # return  # We're done!
+                                lines.append(None)
+                            else:
                                 line = line.decode().rstrip()
                                 lines.append(line)
 
-                        if lines:
-                            msg = {"type": "console", name: lines}
-                            await pb.async_push_ephemeral(msg)
+                    if lines:
+                        msg = {"type": "console", name: lines}
+                        await pb.async_push_ephemeral(msg)
+                        if lines[-1] is None:
+                            return  # We're done
+                    else:
+                        print("NOTHING HERE")
 
-                asyncio.get_event_loop().create_task(_output_flusher(stdout_queue, "from_stdout"))
-                asyncio.get_event_loop().create_task(_output_flusher(stderr_queue, "from_stderr"))
+            asyncio.get_event_loop().create_task(_output_flusher(stdout_queue, "from_stdout"))
+            asyncio.get_event_loop().create_task(_output_flusher(stderr_queue, "from_stderr"))
 
-                await async_execute_command("cmd", [".."],
-                                            provide_stdin=LiveStreamCommandListener(lsl),
-                                            handle_stderr=stderr_queue.put,
-                                            handle_stdout=stdout_queue.put)
-
-                await stdout_queue.put(None)  # mark that we're done
+            await async_execute_command("dir", ["."],
+                                        # provide_stdin=LiveStreamCommandListener(lsl),
+                                        handle_stderr=stderr_queue.put,
+                                        handle_stdout=stdout_queue.put)
+            # print("async_execute_command finished")
+            # await asyncio.sleep(1)
+            await stdout_queue.put(None)  # mark that we're done
+            await stderr_queue.put(None)  # mark that we're done
+            await asyncio.sleep(1)
 
 
     except Exception as ex:
