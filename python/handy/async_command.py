@@ -5,6 +5,8 @@ Tools for running command line processes compatibly with asyncio.
 """
 import asyncio
 import logging
+import msvcrt
+import select
 import sys
 import threading
 import time
@@ -37,14 +39,25 @@ class AsyncReadConsole:
         self.thread = None  # type: threading.Thread
         self.prompt = prompt or "Input (^D or EOF to quit): "
         self.log = logging.getLogger(__name__ + "." + self.__class__.__name__)
+        self.stopping = False
+
+    async def __aenter__(self):
+        self.loop = asyncio.get_event_loop()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+        # await self.close()
+        # how to stop the thread?
+
 
     def __aiter__(self):
         def _thread_run():
-            while True:
+            while not self.stopping:
                 try:
                     time.sleep(0.1)
                     line = input(self.prompt).rstrip()
-                    # line = input().rstrip()
+
                 except EOFError as ex:
                     asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
                     break
@@ -60,6 +73,9 @@ class AsyncReadConsole:
                         asyncio.run_coroutine_threadsafe(self.queue.put(line), self.loop)
                     else:
                         self.log.warning("NO LOOP YET DETERMINED IN AsyncReadConsole!")
+                if line is None:
+                    break
+            # print("Thread is exiting")
 
         if self.thread is None:
             self.thread = threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True)
@@ -68,8 +84,11 @@ class AsyncReadConsole:
 
     async def __anext__(self):
         self.loop = asyncio.get_event_loop()
+        # print("GETTING __anext__ LINE")
         line = await self.readline()
+        # print("__anext__ RETRIEVED ", line)
         if line is None:
+            # print("RAISING STOP ASYNC")
             raise StopAsyncIteration()
         else:
             return line
@@ -77,6 +96,11 @@ class AsyncReadConsole:
     async def readline(self):
         return await self.queue.get()
 
+    async def close(self):
+        self.stopping = True
+        # print(self, "close called")
+        # asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
+        await self.queue.put(None)
 
 async def async_execute_command(cmd, args: Iterable = (),
                                 provide_stdin: AsyncIterator = None,

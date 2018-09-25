@@ -7,6 +7,8 @@ import asyncio
 import os
 import sys
 import traceback
+import weakref
+from typing import List
 
 import asyncpushbullet
 # from async_command import async_execute_command, AsyncReadConsole
@@ -26,8 +28,20 @@ def main():
     # An example
     loop = asyncio.get_event_loop()
 
-    # loop.create_task(run_console())
-    loop.run_until_complete(run_cmd_server())
+    sys.argv.append("console")
+    # sys.argv.append("server")
+
+    if "server" in sys.argv and "console" in sys.argv:
+        t1 = loop.create_task(run_console())
+        t2 = loop.create_task(run_cmd_server("cmd"))
+        loop.run_until_complete(asyncio.gather(t1, t2))
+        return
+
+    if sys.argv[-1] == "console":
+        loop.run_until_complete(run_console())
+
+    if sys.argv[-1] == "server":
+        loop.run_until_complete(run_cmd_server("cmd"))
 
     # loop.run_forever()
 
@@ -36,41 +50,62 @@ async def run_console():
     # Read console input from input() and write to pushbullet
     # Echo pushbullet from_stdout through print()
     print("Console for interacting with remote command", flush=True)
+    stdout_task = None  # type: asyncio.Task
     try:
         key = asyncpushbullet.get_oauth2_key()
+
         async with AsyncPushbullet(key, proxy=PROXY) as pb:
             msg = {"type": "console", "status": "Console input connected to pushbullet"}
             await pb.async_push_ephemeral(msg)
 
-            async def _dump_stdout():
-                try:
-                    async with LiveStreamListener(pb, types=("ephemeral:console",)) as lsl:
-                        async for push in lsl:
-                            subpush = push.get("push")
-                            for line in subpush.get("from_stdout", []):
-                                print(f"STDOUT: {line}", flush=True)
-                            for line in subpush.get("from_stderr", []):
-                                print(f"STDERR: {line}", file=sys.stderr, flush=True)
-                except Exception as ex:
-                    print("ERROR:", ex, file=sys.stderr, flush=True)
-                    traceback.print_tb(sys.exc_info()[2])
+            async with AsyncReadConsole() as asc:
 
-            async def _feed_stdin():
-                try:
-                    async for line in AsyncReadConsole():
+                async def _dump_stdout():
+                    try:
+                        async with LiveStreamListener(pb, types=("ephemeral:console",)) as lsl:
+                            async for push in lsl:
+                                subpush = push.get("push")
+
+                                for line in subpush.get("from_stdout", []):
+                                    if line is None:
+                                        print("Console tool reports that remote command exited.")
+                                        await lsl.close()
+                                    else:
+                                        print(f"console tool received STDOUT: {line}", flush=True)
+
+                                for line in subpush.get("from_stderr", []):
+                                    if line is None:
+                                        print("Console tool reports that remote command exited.")
+                                        await lsl.close()
+                                    else:
+                                        print(f"console tool received STDERR: {line}", file=sys.stderr, flush=True)
+
+                        # print("LSL closed (exited with block)")
+                    except Exception as ex:
+                        print("ERROR in _dump_stdout:", ex, file=sys.stderr, flush=True)
+                        traceback.print_tb(sys.exc_info()[2])
+                    finally:
+                        await asc.close()
+
+                stdout_task = asyncio.get_event_loop().create_task(_dump_stdout())
+
+                async for line in asc:
+                    if line is None:
+                        asc.close()
+                        break
+                    else:
                         msg = {"type": "console", "for_stdin": line}
-                        # print("PUSHING", msg)
                         await pb.async_push_ephemeral(msg)
-                except Exception as ex:
-                    print("ERROR:", ex, file=sys.stderr, flush=True)
-                    traceback.print_tb(sys.exc_info()[2])
 
-        asyncio.get_event_loop().create_task(_dump_stdout())
-        asyncio.get_event_loop().create_task(_feed_stdin())
 
     except Exception as ex:
-        print("ERROR:", ex, file=sys.stderr, flush=True)
+        print("ERROR in run_console:", ex, file=sys.stderr, flush=True)
         traceback.print_tb(sys.exc_info()[2])
+    finally:
+        print("Console tool closing ... ", end="", flush=True)
+        if stdout_task:
+            stdout_task.cancel()
+        print("Closed.", flush=True)
 
 
 class LiveStreamCommandListener:
@@ -92,19 +127,23 @@ class LiveStreamCommandListener:
         return line
 
 
-async def run_cmd_server():
+async def run_cmd_server(cmd: str = None, args: List = None):
     print("Remote command server.", flush=True)
+    loop = asyncio.get_event_loop()
 
-    stdout_queue = asyncio.Queue()
-    stderr_queue = asyncio.Queue()
+    cmd = cmd or "cmd"
+    args = args or []
 
     try:
         key = asyncpushbullet.get_oauth2_key()
         async with AsyncPushbullet(key, proxy=PROXY) as pb:
+            # output_tasks = weakref.WeakSet()
+            stdout_queue = asyncio.Queue()
+            stderr_queue = asyncio.Queue()
+
             msg = {"type": "console", "status": "command server connected to pushbullet"}
             await pb.async_push_ephemeral(msg)
-
-            # async with LiveStreamListener(pb, types="ephemeral:console") as lsl:
+            # output_tasks.add(loop.create_task(pb.async_push_ephemeral(msg)))
 
             async def _output_flusher(_q, name):
                 # name is from_stdout or from_stderr
@@ -123,13 +162,13 @@ async def run_cmd_server():
                                 line = await _q.get()
 
                         except asyncio.TimeoutError:
-                            print("TE")
+                            # print("TE")
                             break
                             # break  # while loop for length of lines
                         else:
-                            print(f"LINE: {line}")
+                            # print(f"{name}: {line}")
                             if line is None:
-                                print("We're done!", name)
+                                # print("output flusher done!", name)
                                 # return  # We're done!
                                 lines.append(None)
                             else:
@@ -139,22 +178,29 @@ async def run_cmd_server():
                     if lines:
                         msg = {"type": "console", name: lines}
                         await pb.async_push_ephemeral(msg)
+                        # output_tasks.add(loop.create_task(pb.async_push_ephemeral(msg)))
                         if lines[-1] is None:
                             return  # We're done
                     else:
                         print("NOTHING HERE")
 
-            asyncio.get_event_loop().create_task(_output_flusher(stdout_queue, "from_stdout"))
-            asyncio.get_event_loop().create_task(_output_flusher(stderr_queue, "from_stderr"))
+            t1 = loop.create_task(_output_flusher(stdout_queue, "from_stdout"))
+            t2 = loop.create_task(_output_flusher(stderr_queue, "from_stderr"))
 
-            await async_execute_command("dir", ["."],
-                                        # provide_stdin=LiveStreamCommandListener(lsl),
-                                        handle_stderr=stderr_queue.put,
-                                        handle_stdout=stdout_queue.put)
-            # print("async_execute_command finished")
-            # await asyncio.sleep(1)
-            await stdout_queue.put(None)  # mark that we're done
-            await stderr_queue.put(None)  # mark that we're done
+            async with LiveStreamListener(pb, types="ephemeral:console") as lsl:
+
+                await async_execute_command(cmd, args,
+                                            provide_stdin=LiveStreamCommandListener(lsl),
+                                            handle_stderr=stderr_queue.put,
+                                            handle_stdout=stdout_queue.put)
+
+                await stdout_queue.put(None)  # mark that we're done for the output flushers
+                await stderr_queue.put(None)  # mark that we're done
+
+            print("GATHERING...", end="", flush=True)
+            # await asyncio.gather(*output_tasks)
+            await asyncio.gather(t1,t2)
+            print("GATHERED.", flush=True)
             await asyncio.sleep(1)
 
 
@@ -162,6 +208,9 @@ async def run_cmd_server():
         print("ERROR:", ex, file=sys.stderr, flush=True)
         traceback.print_tb(sys.exc_info()[2])
 
+    finally:
+        print("Server tool closing ... ", end="", flush=True)
+        print("Closed.", flush=True)
 
 if __name__ == "__main__":
     main()
