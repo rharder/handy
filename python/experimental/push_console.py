@@ -29,7 +29,7 @@ def main():
     loop = asyncio.get_event_loop()
 
     sys.argv.append("console")
-    # sys.argv.append("server")
+    sys.argv.append("server")
 
     if "server" in sys.argv and "console" in sys.argv:
         t1 = loop.create_task(run_console())
@@ -71,14 +71,16 @@ async def run_console():
                                         print("Console tool reports that remote command exited.")
                                         await lsl.close()
                                     else:
-                                        print(f"console tool received STDOUT: {line}", flush=True)
+                                        # print(f"stdout: {line}", flush=True)
+                                        print(line, flush=True)
 
                                 for line in subpush.get("from_stderr", []):
                                     if line is None:
                                         print("Console tool reports that remote command exited.")
                                         await lsl.close()
                                     else:
-                                        print(f"console tool received STDERR: {line}", file=sys.stderr, flush=True)
+                                        # print(f"stderr: {line}", file=sys.stderr, flush=True)
+                                        print(line, file=sys.stderr, flush=True)
 
                         # print("LSL closed (exited with block)")
                     except Exception as ex:
@@ -150,6 +152,7 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                 while True:
                     lines = []
                     while len(lines) < 20:
+                        line = None  # type: bytes
                         try:
                             if lines:
                                 # If we have something to send, wait only a moment
@@ -168,22 +171,24 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                         else:
                             # print(f"{name}: {line}")
                             if line is None:
-                                # print("output flusher done!", name)
+                                print("output flusher done!", name)
                                 # return  # We're done!
                                 lines.append(None)
+                                break
                             else:
                                 line = line.decode().rstrip()
                                 lines.append(line)
 
+                    print(f"{name} LINES:", lines)
                     if lines:
                         msg = {"type": "console", name: lines}
                         await pb.async_push_ephemeral(msg)
                         # output_tasks.add(loop.create_task(pb.async_push_ephemeral(msg)))
                         if lines[-1] is None:
+                            print("Got a None. Done!", name)
                             return  # We're done
-                    else:
-                        print("NOTHING HERE")
 
+            # TODO: stderr is not exiting
             t1 = loop.create_task(_output_flusher(stdout_queue, "from_stdout"))
             t2 = loop.create_task(_output_flusher(stderr_queue, "from_stderr"))
 
@@ -197,9 +202,10 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                 await stdout_queue.put(None)  # mark that we're done for the output flushers
                 await stderr_queue.put(None)  # mark that we're done
 
-            print("GATHERING...", end="", flush=True)
-            # await asyncio.gather(*output_tasks)
-            await asyncio.gather(t1,t2)
+            print("GATHERING t1 stdout...", end="", flush=True)
+            await asyncio.gather(t1)
+            print("GATHERING t2 stderr...")
+            await asyncio.gather(t2)
             print("GATHERED.", flush=True)
             await asyncio.sleep(1)
 
