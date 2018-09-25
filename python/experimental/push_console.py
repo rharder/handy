@@ -4,6 +4,7 @@
 Horribly dangerous.  Do not use.
 """
 import asyncio
+import json
 import os
 import sys
 import traceback
@@ -41,15 +42,14 @@ def main():
         loop.run_until_complete(run_console())
 
     if sys.argv[-1] == "server":
-        loop.run_until_complete(run_cmd_server("cmd"))
+        loop.run_until_complete(run_cmd_server("dir"))
 
-    # loop.run_forever()
 
 
 async def run_console():
     # Read console input from input() and write to pushbullet
     # Echo pushbullet from_stdout through print()
-    print("Console for interacting with remote command", flush=True)
+    print("Starting console for connecting with remote server", flush=True)
     stdout_task = None  # type: asyncio.Task
     try:
         key = asyncpushbullet.get_oauth2_key()
@@ -68,18 +68,16 @@ async def run_console():
 
                                 for line in subpush.get("from_stdout", []):
                                     if line is None:
-                                        print("Console tool reports that remote command exited.")
+                                        print("Remote command exited.", flush=True)
                                         await lsl.close()
                                     else:
-                                        # print(f"stdout: {line}", flush=True)
                                         print(line, flush=True)
 
                                 for line in subpush.get("from_stderr", []):
                                     if line is None:
-                                        print("Console tool reports that remote command exited.")
+                                        print("Remote command exited.", file=sys.stderr, flush=True)
                                         await lsl.close()
                                     else:
-                                        # print(f"stderr: {line}", file=sys.stderr, flush=True)
                                         print(line, file=sys.stderr, flush=True)
 
                         # print("LSL closed (exited with block)")
@@ -115,8 +113,6 @@ class LiveStreamCommandListener:
         self.lsl = lsl  # type: LiveStreamListener
 
     def __aiter__(self):
-        # self.lsl = LiveStreamListener(self.pb, types=("ephemeral:console"))
-        # return self.lsl.__aiter__()
         return self
 
     async def __anext__(self):
@@ -171,7 +167,7 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                         else:
                             # print(f"{name}: {line}")
                             if line is None:
-                                print("output flusher done!", name)
+                                # print(f"{name} output flusher on server done!")
                                 # return  # We're done!
                                 lines.append(None)
                                 break
@@ -179,16 +175,17 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                                 line = line.decode().rstrip()
                                 lines.append(line)
 
-                    print(f"{name} LINES:", lines)
+                    # print(f"{name} server LINES:", lines)
                     if lines:
-                        msg = {"type": "console", name: lines}
-                        await pb.async_push_ephemeral(msg)
-                        # output_tasks.add(loop.create_task(pb.async_push_ephemeral(msg)))
-                        if lines[-1] is None:
-                            print("Got a None. Done!", name)
-                            return  # We're done
+                        try:
+                            msg = {"type": "console", name: lines}
+                            await pb.async_push_ephemeral(msg)
+                            if lines[-1] is None:
+                                return  # We're done
+                        except Exception as ex:
+                            print("ERROR:", ex, file=sys.stderr, flush=True)
+                            traceback.print_tb(sys.exc_info()[2])
 
-            # TODO: stderr is not exiting
             t1 = loop.create_task(_output_flusher(stdout_queue, "from_stdout"))
             t2 = loop.create_task(_output_flusher(stderr_queue, "from_stderr"))
 
@@ -199,15 +196,13 @@ async def run_cmd_server(cmd: str = None, args: List = None):
                                             handle_stderr=stderr_queue.put,
                                             handle_stdout=stdout_queue.put)
 
+                # print("ADDING None TO BOTH OUTPUT QUEUES")
                 await stdout_queue.put(None)  # mark that we're done for the output flushers
                 await stderr_queue.put(None)  # mark that we're done
 
-            print("GATHERING t1 stdout...", end="", flush=True)
-            await asyncio.gather(t1)
-            print("GATHERING t2 stderr...")
-            await asyncio.gather(t2)
-            print("GATHERED.", flush=True)
-            await asyncio.sleep(1)
+            await asyncio.gather(t1, t2)
+
+        # print("SERVER asyncpush WITH BLOCK EXITED")
 
 
     except Exception as ex:
