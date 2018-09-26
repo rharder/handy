@@ -4,7 +4,9 @@
 Tools for running command line processes compatibly with asyncio.
 """
 import asyncio
+import datetime
 import logging
+import queue
 import sys
 import threading
 import time
@@ -22,10 +24,163 @@ def main():
     # An example
     loop = asyncio.get_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(
-        async_execute_command("cmd",
-                              provide_stdin=AsyncReadConsole(),
-                              handle_stdout=lambda x: print(x.decode().rstrip(), flush=True)))
+    loop.run_until_complete(test())
+    # loop.run_until_complete(
+    #     async_execute_command("cmd",
+    #                           provide_stdin=AsyncReadConsole(),
+    #                           handle_stdout=lambda x: print(x.decode().rstrip(), flush=True)))
+
+
+async def test():
+    print("This will test the awaitiness.")
+
+    async def _heartbeat():
+        while True:
+            print("♡", end="", flush=True)
+            await asyncio.sleep(2)
+
+    # asyncio.create_task(_heartbeat())
+
+    async with AsyncReadConsole2(lambda: "{}: ".format(datetime.datetime.now())) as arc:
+        # resp = await arc.input("Say something: ")
+        # print("You said", resp)
+        async for line in arc:
+            print(f"GOT: [{line}]", flush=True)
+            # await arc.close()
+    print("done with arc")
+    # await asyncio.sleep(3)
+
+
+class AsyncReadConsole2:
+    """An AsyncIterator that reads from the console."""
+
+    def __init__(self, prompt=None):
+        """Creates a new AsyncReadConsole with optional default prompt.
+
+        The prompt can be a Callable function/lambda or a string or None.
+        If prompt is Callable, it will be called each time the prompt is
+        presented, making it possible to have "live" prompts.  The prompt
+        can be a regular or async function.
+
+        :param prompt: optional prompt
+        """
+        self.log = logging.getLogger(__name__ + "." + self.__class__.__name__)
+
+        self.main_loop = None  # type: asyncio.BaseEventLoop
+        self.thread_loop = None  # type: asyncio.BaseEventLoop
+
+        self.thread = None  # type: threading.Thread
+        self.arc_stopping = False  # type: bool
+        self.thread_stopped = None  # type: asyncio.Event
+
+        self.prompt = prompt  # str or Callable
+        self.prompt_queue = None  # type: asyncio.Queue  # on thread loop
+        self.input_queue = None  # type: asyncio.Queue  # on main loop
+
+    async def __aenter__(self):
+        self.main_loop = asyncio.get_event_loop()
+        self.input_queue = asyncio.Queue()
+        _thread_ready_to_go = asyncio.Event()
+        self.thread_stopped = asyncio.Event()
+
+        def _thread_run():
+            self.thread_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.thread_loop)
+
+            async def _async_thread_run():
+                self.prompt_queue = asyncio.Queue()
+                self.main_loop.call_soon_threadsafe(_thread_ready_to_go.set)  # Thread is up and running
+
+                while not self.arc_stopping:
+                    prompt = await self.prompt_queue.get()
+                    if self.arc_stopping:
+                        asyncio.run_coroutine_threadsafe(self.input_queue.put(None), self.main_loop)
+                        break
+                    line = None
+                    try:
+                        if prompt:
+                            line = input(prompt)
+                        else:
+                            line = input()
+
+                    except EOFError as ex:
+                        asyncio.run_coroutine_threadsafe(self.input_queue.put(ex), self.main_loop)
+                        break
+                    else:
+                        asyncio.run_coroutine_threadsafe(self.input_queue.put(line), self.main_loop)
+                    # finally:
+                    #     print("DONE WITH INPUT")
+
+                    assert line is not None, "Did not expect line to be none"
+                    if line is None:
+                        break
+                await asyncio.sleep(0)  # one last time to yield to event loop
+                self.thread_loop = None
+                # print("io thread exiting")
+
+            self.thread_loop.run_until_complete(_async_thread_run())
+            self.main_loop.call_soon_threadsafe(self.thread_stopped.set)
+
+        if self.thread_loop is None:
+            self.thread = threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True)
+            self.thread.start()
+        else:
+            raise Exception(f"{self.__class__.__name__} already has a support thread--was __aenter__ called twice?")
+
+        await _thread_ready_to_go.wait()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if not self.arc_stopping:
+            self.arc_stopping = True
+            if self.thread_loop is not None:
+                asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
+        return
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self, prompt=None):
+        if self.arc_stopping:
+            raise StopAsyncIteration()
+
+        # Resolve prompt
+        prompt = prompt or self.prompt
+        if asyncio.iscoroutinefunction(prompt):
+            prompt = await prompt()
+        elif callable(prompt):
+            prompt = prompt()
+
+        asyncio.run_coroutine_threadsafe(self.prompt_queue.put(prompt), self.thread_loop)
+        line = await self.input_queue.get()
+
+        if isinstance(line, Exception):
+            raise StopAsyncIteration(line) from line
+        if line is None:
+            raise StopAsyncIteration()
+        else:
+            return line
+
+    async def input(self, prompt=None):
+        line = None
+        try:
+            line = await self.__anext__(prompt)
+        except StopAsyncIteration:
+            line = None
+        finally:
+            return line
+
+    async def readline(self):
+        """Reads a line of input.  Same as input() but without a prompt."""
+        return await self.input()
+
+    async def close(self):
+        # print(self.__class__.__name__, "close()")
+        self.arc_stopping = True
+        await self.input_queue.put(None)
+        if self.thread_loop:
+            asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
+        # await self.thread_stopped.wait()
 
 
 class AsyncReadConsole:

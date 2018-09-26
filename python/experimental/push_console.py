@@ -13,7 +13,8 @@ import asyncpushbullet  # pip install asyncpushbullet
 # from async_command import async_execute_command, AsyncReadConsole
 from asyncpushbullet import AsyncPushbullet, LiveStreamListener
 
-from handy.async_command import AsyncReadConsole, async_execute_command
+from handy.async_command import AsyncReadConsole, async_execute_command, AsyncReadConsole2
+
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -55,7 +56,7 @@ async def run_console():
             msg = {"type": "console", "status": "Console input connected to pushbullet"}
             await pb.async_push_ephemeral(msg)
 
-            async with AsyncReadConsole() as asc:
+            async with AsyncReadConsole2("cmd input: ") as arc:
                 async def _dump_stdout():
                     try:
                         async with LiveStreamListener(pb, types=("ephemeral:console",)) as lsl:
@@ -85,18 +86,19 @@ async def run_console():
                         print("ERROR in _dump_stdout:", ex, file=sys.stderr, flush=True)
                         traceback.print_tb(sys.exc_info()[2])
                     finally:
-                        await asc.close()
+                        # print('finally: closing arc')
+                        await arc.close()
 
                 stdout_task = asyncio.get_event_loop().create_task(_dump_stdout())
 
-                async for line in asc:
+                async for line in arc:
                     if line is None:
-                        asc.close()
+                        assert line is not None, "This should never happen"
                         break
                     else:
                         msg = {"type": "console", "for_stdin": line}
                         await pb.async_push_ephemeral(msg)
-
+                # print("exited async for line in arc:")
 
     except Exception as ex:
         print("ERROR in run_console:", ex, file=sys.stderr, flush=True)
