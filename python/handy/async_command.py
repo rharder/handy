@@ -13,7 +13,7 @@ import time
 import traceback
 import weakref
 from functools import partial
-from typing import Callable, AsyncIterator, Iterable
+from typing import Callable, AsyncIterator, Iterable, Union
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -60,7 +60,7 @@ async def test():
 class AsyncReadConsole2:
     """An AsyncIterator that reads from the console."""
 
-    def __init__(self, prompt=None):
+    def __init__(self, prompt: Union[str, Callable] = None):
         """Creates a new AsyncReadConsole with optional default prompt.
 
         The prompt can be a Callable function/lambda or a string or None.
@@ -79,7 +79,7 @@ class AsyncReadConsole2:
         self.arc_stopping: bool = False
         self.thread_stopped: asyncio.Event = None
 
-        self.prompt = prompt  # str or Callable
+        self.prompt: Union[str, Callable] = prompt
         self.prompt_queue: asyncio.Queue = None  # on thread loop
         self.input_queue: asyncio.Queue = None  # on main loop
 
