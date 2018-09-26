@@ -39,16 +39,22 @@ async def test():
             print("♡", end="", flush=True)
             await asyncio.sleep(2)
 
-    # asyncio.create_task(_heartbeat())
+    asyncio.create_task(_heartbeat())
 
-    async with AsyncReadConsole2(lambda: "{}: ".format(datetime.datetime.now())) as arc:
-        # resp = await arc.input("Say something: ")
-        # print("You said", resp)
-        async for line in arc:
-            print(f"GOT: [{line}]", flush=True)
-            # await arc.close()
-    print("done with arc")
-    # await asyncio.sleep(3)
+    async with AsyncReadConsole2() as arc:
+        resp = await arc.input("Say: ")
+        print("you said", resp)
+
+    await asyncio.sleep(0)
+
+    # async with AsyncReadConsole2(lambda: "{}: ".format(datetime.datetime.now())) as arc:
+    #     # resp = await arc.input("Say something: ")
+    #     # print("You said", resp)
+    #     async for line in arc:
+    #         print(f"GOT: [{line}]", flush=True)
+    #         # await arc.close()
+    # print("done with arc")
+    # # await asyncio.sleep(3)
 
 
 class AsyncReadConsole2:
@@ -114,12 +120,14 @@ class AsyncReadConsole2:
                     assert line is not None, "Did not expect line to be none"
                     if line is None:
                         break
-                await asyncio.sleep(0)  # one last time to yield to event loop
+                # await asyncio.sleep(0)  # one last time to yield to event loop
                 self.thread_loop = None
-                # print("io thread exiting")
+                print("thread loop exiting")
 
             self.thread_loop.run_until_complete(_async_thread_run())
+            print("_async_thread_run is complete")
             self.main_loop.call_soon_threadsafe(self.thread_stopped.set)
+            print("_thread_run exiting")
 
         if self.thread_loop is None:
             self.thread = threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True)
@@ -175,12 +183,14 @@ class AsyncReadConsole2:
         return await self.input()
 
     async def close(self):
-        # print(self.__class__.__name__, "close()")
+        print(self.__class__.__name__, "close() entrance", flush=True)
         self.arc_stopping = True
         await self.input_queue.put(None)
         if self.thread_loop:
             asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
-        # await self.thread_stopped.wait()
+        await self.thread_stopped.wait()
+        print(self.__class__.__name__, "close() exit", flush=True)
+
 
 
 class AsyncReadConsole:

@@ -86,8 +86,9 @@ async def run_console():
                         print("ERROR in _dump_stdout:", ex, file=sys.stderr, flush=True)
                         traceback.print_tb(sys.exc_info()[2])
                     finally:
-                        # print('finally: closing arc')
+                        print('finally: closing arc')
                         await arc.close()
+                        print("arc.close() returned")
 
                 stdout_task = asyncio.get_event_loop().create_task(_dump_stdout())
 
