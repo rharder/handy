@@ -5,8 +5,6 @@ Tools for running command line processes compatibly with asyncio.
 """
 import asyncio
 import logging
-import msvcrt
-import select
 import sys
 import threading
 import time
@@ -49,7 +47,6 @@ class AsyncReadConsole:
         pass
         # await self.close()
         # how to stop the thread?
-
 
     def __aiter__(self):
         def _thread_run():
@@ -102,6 +99,7 @@ class AsyncReadConsole:
         # asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
         await self.queue.put(None)
 
+
 async def async_execute_command(cmd, args: Iterable = (),
                                 provide_stdin: AsyncIterator = None,
                                 handle_stdout: Callable = None,
@@ -112,16 +110,20 @@ async def async_execute_command(cmd, args: Iterable = (),
     callback_queue = asyncio.Queue()
 
     async def _monitor_callback_queue():
-        await asyncio.sleep(1)
+        # await asyncio.sleep(1)
         while True:
-            x = await callback_queue.get()
-            if x is None:
-                break
-            check = x.func if isinstance(x, partial) else x
-            if asyncio.iscoroutinefunction(check):
-                await x()
-            else:
-                x()
+            try:
+                x = await callback_queue.get()
+                if x is None:
+                    break
+                check = x.func if isinstance(x, partial) else x
+                if asyncio.iscoroutinefunction(check):
+                    await x()
+                else:
+                    x()
+            except Exception as ex:
+                print("Error in callback:", ex.__class__.__name__, ex, file=sys.stderr, flush=True)
+                traceback.print_tb(sys.exc_info()[2])
 
     parent_loop_tasks.add(asyncio.create_task(_monitor_callback_queue()))
 
@@ -138,7 +140,7 @@ async def async_execute_command(cmd, args: Iterable = (),
             # Running within proc_loop
 
             try:
-                print("Launching", cmd, *args, flush=True)
+                print("Server is launching", cmd, *args, flush=True)
                 proc = await asyncio.create_subprocess_exec(
                     cmd, *args,
                     stdin=asyncio.subprocess.PIPE,
@@ -168,10 +170,6 @@ async def async_execute_command(cmd, args: Iterable = (),
                     tasks.append(asyncio.create_task(__process_output(proc.stdout, handle_stdout)))
                 if handle_stderr:
                     tasks.append(asyncio.create_task(__process_output(proc.stderr, handle_stderr)))
-                # else:
-                #     tasks.append(asyncio.create_task(
-                #         __process_output(proc.stderr,
-                #                          lambda x: print(x.decode().rstrip(), file=sys.stderr, flush=True))))
 
                 await asyncio.gather(*tasks)
 

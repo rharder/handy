@@ -4,18 +4,15 @@
 Horribly dangerous.  Do not use.
 """
 import asyncio
-import json
 import os
 import sys
 import traceback
-import weakref
 from typing import List
 
-import asyncpushbullet
+import asyncpushbullet  # pip install asyncpushbullet
 # from async_command import async_execute_command, AsyncReadConsole
 from asyncpushbullet import AsyncPushbullet, LiveStreamListener
 
-# from .async_command import async_execute_command, AsyncReadConsole
 from handy.async_command import AsyncReadConsole, async_execute_command
 
 __author__ = "Robert Harder"
@@ -36,6 +33,7 @@ def main():
         t1 = loop.create_task(run_console())
         t2 = loop.create_task(run_cmd_server("cmd"))
         loop.run_until_complete(asyncio.gather(t1, t2))
+        print("both closed")
         return
 
     if sys.argv[-1] == "console":
@@ -43,7 +41,6 @@ def main():
 
     if sys.argv[-1] == "server":
         loop.run_until_complete(run_cmd_server("dir"))
-
 
 
 async def run_console():
@@ -59,28 +56,31 @@ async def run_console():
             await pb.async_push_ephemeral(msg)
 
             async with AsyncReadConsole() as asc:
-
                 async def _dump_stdout():
                     try:
                         async with LiveStreamListener(pb, types=("ephemeral:console",)) as lsl:
+                            remote_stdout_closed = False
+                            remote_stderr_closed = False
+
                             async for push in lsl:
                                 subpush = push.get("push")
 
                                 for line in subpush.get("from_stdout", []):
                                     if line is None:
-                                        print("Remote command exited.", flush=True)
-                                        await lsl.close()
+                                        remote_stdout_closed = True
                                     else:
                                         print(line, flush=True)
 
                                 for line in subpush.get("from_stderr", []):
                                     if line is None:
-                                        print("Remote command exited.", file=sys.stderr, flush=True)
-                                        await lsl.close()
+                                        remote_stderr_closed = True
                                     else:
                                         print(line, file=sys.stderr, flush=True)
 
-                        # print("LSL closed (exited with block)")
+                                if remote_stdout_closed and remote_stderr_closed:
+                                    print("Remote command exited.", flush=True)
+                                    await lsl.close()
+
                     except Exception as ex:
                         print("ERROR in _dump_stdout:", ex, file=sys.stderr, flush=True)
                         traceback.print_tb(sys.exc_info()[2])
@@ -125,23 +125,19 @@ class LiveStreamCommandListener:
         return line
 
 
-async def run_cmd_server(cmd: str = None, args: List = None):
+async def run_cmd_server(cmd, args: List = None):
     print("Remote command server.", flush=True)
     loop = asyncio.get_event_loop()
-
-    cmd = cmd or "cmd"
     args = args or []
 
     try:
         key = asyncpushbullet.get_oauth2_key()
         async with AsyncPushbullet(key, proxy=PROXY) as pb:
-            # output_tasks = weakref.WeakSet()
             stdout_queue = asyncio.Queue()
             stderr_queue = asyncio.Queue()
 
             msg = {"type": "console", "status": "command server connected to pushbullet"}
             await pb.async_push_ephemeral(msg)
-            # output_tasks.add(loop.create_task(pb.async_push_ephemeral(msg)))
 
             async def _output_flusher(_q, name):
                 # name is from_stdout or from_stderr
@@ -212,6 +208,7 @@ async def run_cmd_server(cmd: str = None, args: List = None):
     finally:
         print("Server tool closing ... ", end="", flush=True)
         print("Closed.", flush=True)
+
 
 if __name__ == "__main__":
     main()
