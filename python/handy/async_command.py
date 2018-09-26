@@ -72,16 +72,16 @@ class AsyncReadConsole2:
         """
         self.log = logging.getLogger(__name__ + "." + self.__class__.__name__)
 
-        self.main_loop = None  # type: asyncio.BaseEventLoop
-        self.thread_loop = None  # type: asyncio.BaseEventLoop
+        self.main_loop: asyncio.BaseEventLoop = None
+        self.thread_loop: asyncio.BaseEventLoop = None
 
-        self.thread = None  # type: threading.Thread
-        self.arc_stopping = False  # type: bool
-        self.thread_stopped = None  # type: asyncio.Event
+        self.thread: threading.Thread = None
+        self.arc_stopping: bool = False
+        self.thread_stopped: asyncio.Event = None
 
         self.prompt = prompt  # str or Callable
-        self.prompt_queue = None  # type: asyncio.Queue  # on thread loop
-        self.input_queue = None  # type: asyncio.Queue  # on main loop
+        self.prompt_queue: asyncio.Queue = None  # on thread loop
+        self.input_queue: asyncio.Queue = None  # on main loop
 
     async def __aenter__(self):
         self.main_loop = asyncio.get_event_loop()
@@ -190,7 +190,6 @@ class AsyncReadConsole2:
             asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
         await self.thread_stopped.wait()
         print(self.__class__.__name__, "close() exit", flush=True)
-
 
 
 class AsyncReadConsole:
