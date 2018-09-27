@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import tkinter as tk
+import traceback
 from concurrent.futures import CancelledError
 
 from aiohttp import WSMsgType  # pip install aiohttp
@@ -37,6 +38,7 @@ def main():
 class MainApp(TkAsyncioBaseApp):
     def __init__(self, root: tk.Tk):
         super().__init__(root)
+        self.root = root
         self.root.title("Example Tk Asyncio App")
         self.log = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class MainApp(TkAsyncioBaseApp):
 
         self.status = "Click connect to begin."
         # self.connect_clicked()
-        self.io(print, "hi")
+        # self.io(print, "hello world", file=sys.stderr)
 
     @property
     def status(self):
@@ -65,21 +67,23 @@ class MainApp(TkAsyncioBaseApp):
 
     @status.setter
     def status(self, val):
-        if self._ioloop == asyncio.get_event_loop():
-            # Set the status across event loops/threads by scheduling on tk thread
-            self.tk(self.status_var.set, str(val))
-        else:
-            # Already on tk thread so set the variable directly
-            self.status_var.set(str(val))
+        self.tk(self.status_var.set, str(val))
+        #
+        # if self._ioloop == asyncio.get_event_loop():
+        #     # Set the status across event loops/threads by scheduling on tk thread
+        #     self.tk(self.status_var.set, str(val))
+        # else:
+        #     # Already on tk thread so set the variable directly
+        #     self.status_var.set(str(val))
 
     def ioloop_exception_happened(self, loop: asyncio.BaseEventLoop, context: dict):
-        super().ioloop_exception_happened(loop, context)
+        # super().ioloop_exception_happened(loop, context)
         if "message" in context:
             self.status = context["message"]
         if "exception" in context:
             self.status = context["exception"]
 
-    def create_widgets(self, parent: tk.Frame):
+    def create_widgets(self, parent: tk.Misc):
         # Buttons
         btn_connect = tk.Button(parent, text="Connect", command=self.connect_clicked)
         btn_connect.grid(row=0, column=0, sticky=tk.E)
@@ -125,34 +129,23 @@ class MainApp(TkAsyncioBaseApp):
                     self.tk(self.txt_input.configure, state=tk.NORMAL)
                     self.tk(self.txt_input.focus_set)
 
-                    # # self.ws_client.flush_incoming_threadsafe(timeout=None)
-                    # await asyncio.sleep(0.1)
-                    # for i in range(10):
-                    #     await self.ws_client.send_str("i={}".format(i))
-                    # await self.ws_client.send_str("one")
-                    # await self.ws_client.send_str("two")
-                    # await self.ws_client.send_str("Should have been flushed")
-                    # print("Flushing...")
-                    # # await asyncio.sleep(0.25)
-                    # await self.ws_client.flush_incoming(timeout=0.25)
-                    # print("Flushed.")
-
                     async for msg in self.ws_client:
                         if msg.type == WSMsgType.TEXT:  # When the server sends us text...
                             text = str(msg.data)
-                            self.log.debug("Rcvd {}".format(text))
-                            self.status = "Received {}".format(text)
-                            self.tk(self.echo_var.set, text)  # Display it in the response field
+                            # print("RECEIVED", text, flush=True)
+                            # self.log.debug("Rcvd {}".format(text))
+                            # self.status = "Received {}".format(text)
+                            # self.tk(self.echo_var.set, text)  # Display it in the response field
 
 
             except Exception as ex:
                 print(ex.__class__.__name__, ex, file=sys.stderr)
                 self.status = "{}: {}".format(ex.__class__.__name__, ex)
-                # traceback.print_tb(sys.exc_info()[2])
+                traceback.print_tb(sys.exc_info()[2])
             else:
                 self.status = "Disconnected."
 
-        asyncio.run_coroutine_threadsafe(_connect(), self._ioloop)
+        self.io(_connect())
 
     def io_schedule_send(self, text):
         """Schedules data to be sent on the io loop.
@@ -164,28 +157,30 @@ class MainApp(TkAsyncioBaseApp):
         chunk of text.
         """
 
-        async def _send(x):
-            try:
-                await asyncio.sleep(0.1)
-                if self.ws_client:
-                    print("Sending {}".format(x))
-                    self.status = "Sending {}".format(x)
-                    await self.ws_client.send_str(x)
-                    self.status = "Sent {}".format(x)
+        # if self._io_send_id:
+        #     self._io_send_id.cancel()
 
-            except CancelledError:
-                # Whenever we arrive here, we realize that we just saved
-                # ourselves an unnecessary send/receive cycle over the network.
-                pass
-            except Exception as ex:
-                print(ex.__class__.__name__, ex, file=sys.stderr)
-                self.status = "{}: {}".format(ex.__class__.__name__, ex)
+        self._io_send_id = self.io(self._send(text))
 
-        if self._io_send_id:
-            self._io_send_id.cancel()
+    async def _send(self, x):
+        try:
+            # await asyncio.sleep(0.01)
+            if self.ws_client:
+                print("Sending {}".format(x))
+                # self.status = "Sending {}".format(x)
+                await self.ws_client.send_str(x)
+                print("Sent {}".format(x))
+                self.status = "Sent {}".format(x)
 
-        self._io_send_id = self.io(_send(text))
+        except CancelledError:
+            # Whenever we arrive here, we realize that we just saved
+            # ourselves an unnecessary send/receive cycle over the network.
+            pass
+        except Exception as ex:
+            print(ex.__class__.__name__, ex, file=sys.stderr)
+            self.status = "{}: {}".format(ex.__class__.__name__, ex)
 
+    # if self._io_send_id:
 
 if __name__ == "__main__":
     main()

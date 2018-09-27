@@ -3,36 +3,22 @@
 A base class for Tk apps that will use asyncio.
 """
 import asyncio
-import logging
 import os
 import pprint
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 import traceback
-import weakref
-from concurrent.futures import CancelledError
+from contextlib import suppress
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Union, Coroutine
 
-from aiohttp import WSMsgType  # pip install aiohttp
-
-from handy.websocket_client import WebsocketClient
+import aiohttp
 
 __author__ = "Robert Harder"
 
-ECHO_WS_URL = "wss://echo.websocket.org"
-PROXY = os.environ.get("https_proxy") or os.environ.get("http_proxy")
-
-
-# ECHO_WS_URL = "ws://localhost:9990/cap"
-# PROXY = None
-
-# logging.basicConfig(level=logging.DEBUG)
-# logging.basicConfig(level=logging.INFO)
-
-# PROXY = None
 
 def main():
     tk_root = tk.Tk()
@@ -41,18 +27,30 @@ def main():
 
 
 class TkAsyncioBaseApp:
-    def __init__(self, root: tk.Tk):
-        self.root: tk.Tk = root
+    """
+
+
+        def show_error(*args):
+            a = traceback.format_exception(*args)
+            print(a)
+        self.root.report_callback_exception = show_error
+
+
+    """
+
+    def __init__(self, base: tk.Misc):
+        self.__tk_base: tk.Misc = base
 
         # Inter-thread communication
         self._ioloop: asyncio.BaseEventLoop = None
         self.__tk_queue: queue.Queue = queue.Queue()
         self.__tk_after_id: str = None
+        # self.__io_queue: asyncio.Queue = None
 
         # IO Loop
-        self._create_io_loop()
+        self.__create_io_loop()
 
-    def _create_io_loop(self):
+    def __create_io_loop(self):
         """Creates a new thread to manage an asyncio event loop."""
         if self._ioloop is not None:
             raise Exception("An IO loop is already running.")
@@ -62,6 +60,9 @@ class TkAsyncioBaseApp:
         def _thread_run(loop: asyncio.BaseEventLoop):
             asyncio.set_event_loop(loop)
             loop.call_soon_threadsafe(_ready.set)
+            # async def _prep():
+            #     self.__io_queue = asyncio.Queue()
+            # loop.call_soon_threadsafe(_prep())
             loop.run_forever()
 
         self._ioloop = asyncio.new_event_loop()
@@ -75,55 +76,182 @@ class TkAsyncioBaseApp:
         print(pprint.pformat(context), file=sys.stderr, flush=True)
         traceback.print_tb(sys.exc_info()[2])
 
-    def io(self, coro, *kargs) -> Union[asyncio.Future, asyncio.Handle]:
-        if asyncio.iscoroutine(coro):
-            return asyncio.run_coroutine_threadsafe(coro, self._ioloop)
-        else:
-            return self._ioloop.call_soon_threadsafe(coro, *kargs)
+    def tkloop_exception_happened(self, extype, ex, tb, func):
+        """Called when there is an unhandled exception in a job that was
+        scheduled on the tk event loop.
+
+        The arguments are the three standard sys.exc_info() arguments
+        plus the function that was called as a scheduled job and subsequently
+        raised the Exception.
+
+        :param extype: the exception type
+        :param ex: the Exception object that was raised
+        :param tb: the traceback associated with the exception
+        :param func: the scheduled function that caused the trouble
+        """
+        print("TkAsyncioBaseApp.tkloop_exception_happened was called.  Override this function in your app.",
+              file=sys.stderr, flush=True)
+        print("Exception:", extype, ex, func, file=sys.stderr, flush=True)
+        traceback.print_tb(tb)
+
+    def io(self, func: Union[Coroutine, Callable], *kargs, **kwargs) -> Union[asyncio.Future, asyncio.Handle]:
+        """
+        Schedule a coroutine or regular function to be called on the io event loop.
+
+        self.io(some_coroutine())
+        self.io(some_func, "some arg")
+
+        The positional *kargs and named **kwargs arguments only apply when
+        a non-coroutine function is passed such as:
+
+            self.io(print, "hello world", file=sys.stderr)
+
+        Returns a Future (for coroutines) or Handle (for regular functions) that can
+        be used to cancel or otherwise inspect the scheduled job.
+
+        This is threadsafe.
+
+        :param func: the coroutine or function
+        :param kargs: optional positional arguments for the function
+        :param kwargs: optional named arguments for the function
+        :return:
+        """
+        q = queue.Queue()
+
+        async def _run():
+            # Wrap everything in an async def because we need to use
+            # create_task or call_soon in order for the exception
+            # handler to be called when there's an exception.
+            await asyncio.sleep(0.02)
+            if asyncio.iscoroutine(func):
+                # print("ADDING TASK", func, flush=True)
+                task = asyncio.get_event_loop().create_task(func)
+                # print("ADDED TASK", task, flush=True)
+                q.put(task)
+                # print("PUT TASK", task, flush=True)
+            else:
+                # print("FUNCTION", flush=True)
+                f = partial(func, *kargs, **kwargs)
+                handle = asyncio.get_event_loop().call_soon(f)
+                q.put(handle)
+
+        print("run_coroutine_threadsafe...", end="", flush=True)
+        asyncio.run_coroutine_threadsafe(_run(), self._ioloop)
+        print("run_coroutine_threadsafe DONE", flush=True)
+        time.sleep(0.15)
+        print("QUEUE SIZE:", q.qsize(), flush=True)
+        x = q.get()
+        print("RETRIEVED FROM QUEUE", x, flush=True)
+        return x
+
+    # def __io_flush_queue(self):
+    #     """Used internally to actually flush the io task queue."""
+    #
+    #     # print("FLUSHING", flush=True)
+    #     while True:
+    #         # print(".", end="", flush=True)
+    #         try:
+    #             func = self.__tk_queue.get(block=False)
+    #             func = await self.__io_queue.get()
+    #         except queue.Empty:
+    #             break  # empty queue - we're done!
+    #         else:
+    #             # noinspection PyBroadException
+    #             try:
+    #                 func()
+    #             except Exception as ex:
+    #                 self.tkloop_exception_happened(*sys.exc_info(), func)
+    #     # print("DONE FLUSHING", flush=True)
 
     def tk(self, func: Callable, *kargs, **kwargs):
-        """Schedule a command to be called on the main GUI event thread."""
+        """
+        Schedule a function to be called on the Tk GUI event loop.
 
-        def _process_tk_queue():
-            # print("Queue has {} items to process.".format(self._tk_queue.qsize()))
-            # count = 0
-            while not self.__tk_queue.empty():
-                msg = self.__tk_queue.get()  # type: Callable
-                msg()
-                # count += 1
-            # print("Processed {} items.".format(count))
+        This is threadsafe.
+
+        :param func: The function to call
+        :param kargs: optional positional arguments
+        :param kwargs: optional named arguments
+        :return:
+        """
 
         # Put the command in a thread-safe queue and schedule the tk thread
         # to retrieve it in a few milliseconds.  The few milliseconds delay
         # helps if there's a flood of calls all at once.
         self.__tk_queue.put(partial(func, *kargs, **kwargs))
-        if self.__tk_after_id:
-            self.root.after_cancel(self.__tk_after_id)
-        self.__tk_after_id = self.root.after(5, _process_tk_queue)
+
+        # if self.__tk_after_id:
+        #     self.__tk_base.after_cancel(self.__tk_after_id)
+
+        self.__tk_after_id = self.__tk_base.after(25, self.__tk_flush_queue)
+
+    def tk_flush_queue(self):
+        """Executes all the scheduled tasks in the tk event loop.
+
+        This is called automatically within a few milliseconds after the
+        last call to xxx.tk(), but if a flood of calls comes in to xxx.tk()
+        then you might find it necessary to force a "flush" of the scheduled
+        tasks to help with the user interface.
+
+        This is threadsafe.
+        """
+        self.__tk_base.after(0, self.__tk_flush_queue)
+
+    def __tk_flush_queue(self):
+        """Used internally to actually flush the tk task queue."""
+
+        # print("FLUSHING", flush=True)
+        while True:
+            # print(".", end="", flush=True)
+            try:
+                func = self.__tk_queue.get(block=False)
+            except queue.Empty:
+                break  # empty queue - we're done!
+            else:
+                # noinspection PyBroadException
+                try:
+                    func()
+                except Exception as ex:
+                    self.tkloop_exception_happened(*sys.exc_info(), func)
+        # print("DONE FLUSHING", flush=True)
 
 
 class ExampleApp(TkAsyncioBaseApp):
+    URL = "http://captive.apple.com"
+    PROXY = os.environ.get("https_proxy") or os.environ.get("http_proxy")
+
     def __init__(self, root: tk.Tk):
+
         super().__init__(root)
+        self.root = root
         self.root.title("Example Tk Asyncio App")
 
         # Data
-        self.input_var = tk.StringVar()
-        self.echo_var = tk.StringVar()
         self.status_var = tk.StringVar()
-        self._io_send_id: asyncio.Future = None
-        self.ws_client = None
 
         # View / Control
-        self.txt_input = None  # type: tk.Entry
-        # self.btn_connect = None  # type: tk.Button
         self.create_widgets(self.root)
 
-        # Connections
-        self.input_var.trace("w", self.input_var_changed)
-
+        # Startup
         self.status = "Click connect to begin."
-        # self.connect_clicked()
+
+        # async def amess_around():
+        #     print("AMessing around...", flush=True)
+        #     raise Exception("Uh oh! in async mess around")
+        #     await asyncio.sleep(1)
+        #     print("Done amessing around", flush=True)
+        #
+        # x = self.io(amess_around())
+        # # x.cancel()
+
+        # def mess_around():
+        #     print("Messing around...", flush=True)
+        #     time.sleep(1)
+        #     raise Exception("Uh oh! in sync mess around")
+        #     print("Done messing around.", flush=True)
+        #
+        # x = self.tk(mess_around)
+        # # x.cancel()
 
     @property
     def status(self):
@@ -131,38 +259,24 @@ class ExampleApp(TkAsyncioBaseApp):
 
     @status.setter
     def status(self, val):
-        if self._ioloop == asyncio.get_event_loop():
-            # Set the status across event loops/threads by scheduling on tk thread
-            self.tk(self.status_var.set, str(val))
-        else:
-            # Already on tk thread so set the variable directly
-            self.status_var.set(str(val))
+        # Works from any thread
+        self.tk(self.status_var.set, str(val))
 
     def ioloop_exception_happened(self, loop: asyncio.BaseEventLoop, context: dict):
-        super().ioloop_exception_happened(loop, context)
+        # super().ioloop_exception_happened(loop, context)
         if "message" in context:
             self.status = context["message"]
         if "exception" in context:
             self.status = context["exception"]
 
-    def create_widgets(self, parent: tk.Frame):
+    def tkloop_exception_happened(self, extype, ex, tb, func):
+        # super().tkloop_exception_happened(extype, ex, tb, func)
+        self.status = f"Exception: {ex}"
+
+    def create_widgets(self, parent: tk.Misc):
         # Buttons
-        btn_connect = tk.Button(parent, text="Connect", command=self.connect_clicked)
-        btn_connect.grid(row=0, column=0, sticky=tk.E)
-
-        # Input
-        lbl_type_here = tk.Label(parent, text="Type here:")
-        lbl_type_here.grid(row=1, column=0, sticky=tk.W)
-        self.txt_input = tk.Entry(parent, textvariable=self.input_var, width=40)
-        self.txt_input.grid(row=1, column=1, sticky="EW")
-        self.txt_input.configure(state=tk.DISABLED)
-        tk.Grid.grid_columnconfigure(parent, 1, weight=1)
-
-        # Echo
-        lbl_echo1 = tk.Label(parent, text="Echo here:")
-        lbl_echo1.grid(row=2, column=0, sticky=tk.W)
-        lbl_echo2 = tk.Label(parent, textvariable=self.echo_var)
-        lbl_echo2.grid(row=2, column=1, sticky=tk.W)
+        btn_connect = tk.Button(parent, text="Connect to http://captive.apple.com", command=self.connect_clicked)
+        btn_connect.grid(row=0, column=0, sticky=tk.E, padx=15, pady=15)
 
         # Status line
         status_line = tk.Frame(parent, borderwidth=2, relief=tk.GROOVE)
@@ -170,89 +284,15 @@ class ExampleApp(TkAsyncioBaseApp):
         lbl_status = tk.Label(status_line, textvar=self.status_var)
         lbl_status.grid(row=0, column=1, sticky=tk.W)
 
-    def input_var_changed(self, _, __, ___):
-        self.io_schedule_send(self.input_var.get())
-
-    def connect_clicked(self):  # , btn:tk.Button):
-        # In order to schedule something on the io event loop and thread
-        # create an async function and schedule it with asyncio.run_coroutine_threadsafe.
-        # To go the other direction, from the io loop back to the tk thread,
-        # See the example in the tk_schedule_do function.
+    def connect_clicked(self):
         async def _connect():
-            try:
-                if self.ws_client:
-                    self.status = "Disconnecting..."
-                    await self.ws_client.close()
-                    self.ws_client = None
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.URL, proxy=self.PROXY) as resp:  # type: aiohttp.ClientResponse
+                    text = await resp.text()
+                    self.status = text  # Status line
+                    self.tk(self.root.title, text)  # Window Title, for kicks
 
-                self.status = "Connecting to {}".format(ECHO_WS_URL)
-                async with WebsocketClient(ECHO_WS_URL, proxy=PROXY) as self.ws_client:
-                    self.status = "Connected!  Start typing..."
-                    self.tk(self.txt_input.configure, state=tk.NORMAL)
-                    self.tk(self.txt_input.focus_set)
-
-                    # # self.ws_client.flush_incoming_threadsafe(timeout=None)
-                    # await asyncio.sleep(0.1)
-                    # for i in range(10):
-                    #     await self.ws_client.send_str("i={}".format(i))
-                    # await self.ws_client.send_str("one")
-                    # await self.ws_client.send_str("two")
-                    # await self.ws_client.send_str("Should have been flushed")
-                    # print("Flushing...")
-                    # # await asyncio.sleep(0.25)
-                    # await self.ws_client.flush_incoming(timeout=0.25)
-                    # print("Flushed.")
-
-                    async for msg in self.ws_client:
-                        if msg.type == WSMsgType.TEXT:  # When the server sends us text...
-                            text = str(msg.data)
-                            self.log.debug("Rcvd {}".format(text))
-                            self.status = "Received {}".format(text)
-                            self.tk(self.echo_var.set, text)  # Display it in the response field
-
-
-            except Exception as ex:
-                print(ex.__class__.__name__, ex, file=sys.stderr)
-                self.status = "{}: {}".format(ex.__class__.__name__, ex)
-                # traceback.print_tb(sys.exc_info()[2])
-            else:
-                self.status = "Disconnected."
-
-        asyncio.run_coroutine_threadsafe(_connect(), self._ioloop)
-
-    def io_schedule_send(self, text):
-        """Schedules data to be sent on the io loop.
-
-        Unlike the tk_schedule, what we do here is throw away previous
-        commands to send data and only send the most recent.
-        The very small sleep allows for when text is coming in fast
-        to not send every keystroke but to wait and send a larger
-        chunk of text.
-        """
-
-        async def _send(x):
-            try:
-                await asyncio.sleep(0.1)
-                if self.ws_client:
-                    self.status = "Sending {}".format(x)
-                    self.log.debug("Sending {}".format(x))
-                    await self.ws_client.send_str(x)
-                    self.status = "Sent {}".format(x)
-                    self.log.debug("Sent {}".format(x))
-
-            except CancelledError:
-                # Whenever we arrive here, we realize that we just saved
-                # ourselves an unnecessary send/receive cycle over the network.
-                pass
-            except Exception as ex:
-                print(ex.__class__.__name__, ex, file=sys.stderr)
-                self.status = "{}: {}".format(ex.__class__.__name__, ex)
-
-        if self._io_send_id:
-            self._io_send_id.cancel()
-
-        print("scheduling", text)
-        self.io(_send(text))
+        self.io(_connect())
 
 
 if __name__ == "__main__":
