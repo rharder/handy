@@ -14,7 +14,7 @@ import traceback
 import weakref
 from concurrent.futures import CancelledError
 from functools import partial
-from typing import Callable
+from typing import Callable, Union
 
 from aiohttp import WSMsgType  # pip install aiohttp
 
@@ -43,7 +43,6 @@ def main():
 class TkAsyncioBaseApp:
     def __init__(self, root: tk.Tk):
         self.root: tk.Tk = root
-        self.log = logging.getLogger(self.__class__.__name__)
 
         # Inter-thread communication
         self._ioloop: asyncio.BaseEventLoop = None
@@ -51,15 +50,14 @@ class TkAsyncioBaseApp:
         self.__tk_after_id: str = None
 
         # IO Loop
-        self.create_io_loop()
-        # self._io_futures: weakref.WeakSet = weakref.WeakSet()
+        self._create_io_loop()
 
-    def create_io_loop(self):
+    def _create_io_loop(self):
         """Creates a new thread to manage an asyncio event loop."""
         if self._ioloop is not None:
             raise Exception("An IO loop is already running.")
 
-        _ready = threading.Event()
+        _ready = threading.Event()  # Don't leave this function until thread is ready
 
         def _thread_run(loop: asyncio.BaseEventLoop):
             asyncio.set_event_loop(loop)
@@ -75,11 +73,13 @@ class TkAsyncioBaseApp:
         print("TkAsyncioBaseApp.ioloop_exception_happened called.  Override this function in your app.",
               file=sys.stderr, flush=True)
         print(pprint.pformat(context), file=sys.stderr, flush=True)
+        traceback.print_tb(sys.exc_info()[2])
 
-    def io(self, coro) -> asyncio.Future:
-        fut = asyncio.run_coroutine_threadsafe(coro, self._ioloop)
-        # self._io_futures.add(fut)
-        return fut
+    def io(self, coro, *kargs) -> Union[asyncio.Future, asyncio.Handle]:
+        if asyncio.iscoroutine(coro):
+            return asyncio.run_coroutine_threadsafe(coro, self._ioloop)
+        else:
+            return self._ioloop.call_soon_threadsafe(coro, *kargs)
 
     def tk(self, func: Callable, *kargs, **kwargs):
         """Schedule a command to be called on the main GUI event thread."""

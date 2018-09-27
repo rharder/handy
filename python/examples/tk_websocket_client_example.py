@@ -3,6 +3,7 @@
 A more sophisticated Tk example using a websocket client.
 """
 import asyncio
+import logging
 import os
 import sys
 import tkinter as tk
@@ -37,6 +38,7 @@ class MainApp(TkAsyncioBaseApp):
     def __init__(self, root: tk.Tk):
         super().__init__(root)
         self.root.title("Example Tk Asyncio App")
+        self.log = logging.getLogger(__name__)
 
         # Data
         self.input_var = tk.StringVar()
@@ -55,6 +57,7 @@ class MainApp(TkAsyncioBaseApp):
 
         self.status = "Click connect to begin."
         # self.connect_clicked()
+        self.io(print, "hi")
 
     @property
     def status(self):
