@@ -3,19 +3,14 @@
 A more sophisticated Tk example using a websocket client.
 """
 import asyncio
-import logging
 import os
-import queue
 import sys
-import threading
 import tkinter as tk
-import traceback
 from concurrent.futures import CancelledError
-from functools import partial
-from typing import Callable
 
 from aiohttp import WSMsgType  # pip install aiohttp
 
+from handy.tk_asyncio_base import TkAsyncioBaseApp
 from handy.websocket_client import WebsocketClient
 
 __author__ = "Robert Harder"
@@ -38,38 +33,28 @@ def main():
     tk_root.mainloop()
 
 
-class MainApp:
-    def __init__(self, root):
-        self.window = root
-        root.title("Websocket Example")
-        self.log = logging.getLogger(__name__)
-        # self.log = logging.getLogger("{file}.{klass}:{id}".format(file=__name__, klass=self.__class__.__name__, id=id(self)))
+class MainApp(TkAsyncioBaseApp):
+    def __init__(self, root: tk.Tk):
+        super().__init__(root)
+        self.root.title("Example Tk Asyncio App")
 
         # Data
         self.input_var = tk.StringVar()
         self.echo_var = tk.StringVar()
         self.status_var = tk.StringVar()
-        self.ioloop = None  # type: asyncio.BaseEventLoop
-        self.ws_client = None  # type: WebsocketClient
-
-        # Inter-thread communication
-        self._tk_queue = queue.Queue()  # type: queue.Queue
-        self._tk_after_id = None  # type: str
-        self._io_scheduled_id = None  # type: asyncio.Future
-
-        # IO Loop
-        self.create_io_loop()
+        self._io_send_id: asyncio.Future = None
+        self.ws_client = None
 
         # View / Control
         self.txt_input = None  # type: tk.Entry
         # self.btn_connect = None  # type: tk.Button
-        self.create_widgets(self.window)
+        self.create_widgets(self.root)
 
         # Connections
         self.input_var.trace("w", self.input_var_changed)
 
         self.status = "Click connect to begin."
-        self.connect_clicked()
+        # self.connect_clicked()
 
     @property
     def status(self):
@@ -77,27 +62,15 @@ class MainApp:
 
     @status.setter
     def status(self, val):
-        if self.ioloop == asyncio.get_event_loop():
+        if self._ioloop == asyncio.get_event_loop():
             # Set the status across event loops/threads by scheduling on tk thread
-            self.tk_schedule_do(self.status_var.set, str(val))
+            self.tk(self.status_var.set, str(val))
         else:
             # Already on tk thread so set the variable directly
             self.status_var.set(str(val))
 
-    def create_io_loop(self):
-        """Creates a new thread to manage an asyncio event loop specifically for IO to/from Pushbullet."""
-        assert self.ioloop is None  # This should only ever be run once
-
-        def _run(loop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        self.ioloop = asyncio.new_event_loop()
-        self.ioloop.set_exception_handler(self._ioloop_exc_handler)
-        threading.Thread(target=partial(_run, self.ioloop), name="Thread-asyncio", daemon=True).start()
-
-    def _ioloop_exc_handler(self, loop: asyncio.BaseEventLoop, context: dict):
-        print("_exc_handler", loop, context, file=sys.stderr, flush=True)
+    def ioloop_exception_happened(self, loop: asyncio.BaseEventLoop, context: dict):
+        super().ioloop_exception_happened(loop, context)
         if "message" in context:
             self.status = context["message"]
         if "exception" in context:
@@ -146,8 +119,8 @@ class MainApp:
                 self.status = "Connecting to {}".format(ECHO_WS_URL)
                 async with WebsocketClient(ECHO_WS_URL, proxy=PROXY) as self.ws_client:
                     self.status = "Connected!  Start typing..."
-                    self.tk_schedule_do(self.txt_input.configure, state=tk.NORMAL)
-                    self.tk_schedule_do(self.txt_input.focus_set)
+                    self.tk(self.txt_input.configure, state=tk.NORMAL)
+                    self.tk(self.txt_input.focus_set)
 
                     # # self.ws_client.flush_incoming_threadsafe(timeout=None)
                     # await asyncio.sleep(0.1)
@@ -166,7 +139,7 @@ class MainApp:
                             text = str(msg.data)
                             self.log.debug("Rcvd {}".format(text))
                             self.status = "Received {}".format(text)
-                            self.tk_schedule_do(self.echo_var.set, text)  # Display it in the response field
+                            self.tk(self.echo_var.set, text)  # Display it in the response field
 
 
             except Exception as ex:
@@ -176,7 +149,7 @@ class MainApp:
             else:
                 self.status = "Disconnected."
 
-        asyncio.run_coroutine_threadsafe(_connect(), self.ioloop)
+        asyncio.run_coroutine_threadsafe(_connect(), self._ioloop)
 
     def io_schedule_send(self, text):
         """Schedules data to be sent on the io loop.
@@ -192,11 +165,10 @@ class MainApp:
             try:
                 await asyncio.sleep(0.1)
                 if self.ws_client:
+                    print("Sending {}".format(x))
                     self.status = "Sending {}".format(x)
-                    self.log.debug("Sending {}".format(x))
                     await self.ws_client.send_str(x)
                     self.status = "Sent {}".format(x)
-                    self.log.debug("Sent {}".format(x))
 
             except CancelledError:
                 # Whenever we arrive here, we realize that we just saved
@@ -206,42 +178,10 @@ class MainApp:
                 print(ex.__class__.__name__, ex, file=sys.stderr)
                 self.status = "{}: {}".format(ex.__class__.__name__, ex)
 
-        if self._io_scheduled_id:
-            self._io_scheduled_id.cancel()
+        if self._io_send_id:
+            self._io_send_id.cancel()
 
-        self._io_scheduled_id = asyncio.run_coroutine_threadsafe(_send(text), self.ioloop)
-
-    def tk_schedule_do(self, cmd: Callable, *kargs, **kwargs):
-        """Schedule a command to be called on the main GUI event thread.
-
-        How important is it to schedule tk events on the tk thread?
-        Not very, in my findings.  Tk has not given me grief when I manipulate
-        it from the io loop, for example.  However, when making significant
-        changes to the GUI, such as adding a large number of items to a Listbox,
-        the io loop occasionally spits out weird errors about functions taking
-        too long, which I tracked back to the GUI calls blocking until they're done.
-        Asyncio doesn't seem to like that.
-
-        Still, to have the best-behaved program, this example shows how to schedule
-        events to happen on the GUI thread where they belong.
-        """
-
-        def _process_tk_queue():
-            # print("Queue has {} items to process.".format(self._tk_queue.qsize()))
-            # count = 0
-            while not self._tk_queue.empty():
-                msg = self._tk_queue.get()  # type: Callable
-                msg()
-                # count += 1
-            # print("Processed {} items.".format(count))
-
-        # Put the command in a thread-safe queue and schedule the tk thread
-        # to retrieve it in a few milliseconds.  The few milliseconds delay
-        # helps if there's a flood of calls all at once.
-        self._tk_queue.put(partial(cmd, *kargs, **kwargs))
-        if self._tk_after_id:
-            self.window.after_cancel(self._tk_after_id)
-        self._tk_after_id = self.window.after(5, _process_tk_queue)
+        self._io_send_id = self.io(_send(text))
 
 
 if __name__ == "__main__":

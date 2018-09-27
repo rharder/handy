@@ -17,6 +17,7 @@ from functools import partial
 import aiohttp
 from aiohttp import web
 
+from handy.tk_asyncio_base import TkAsyncioBaseApp
 from handy.tkinter_tools import BindableTextArea
 from handy.websocket_server import WebServer, WebHandler, WebsocketHandler
 
@@ -29,8 +30,9 @@ def main():
     tk_root.mainloop()
 
 
-class MainApp:
+class MainApp(TkAsyncioBaseApp):
     def __init__(self, root):
+        super().__init__(root)
         self.window = root
         root.title("Websocket Example")
         self.log = logging.getLogger(__name__)
@@ -38,7 +40,6 @@ class MainApp:
         # Data
         self.port_var = tk.IntVar()
         self.detail_var = tk.StringVar()
-        self.ioloop = None  # type: asyncio.BaseEventLoop
         self.server = None  # type: WebServer
         self.socket_handler = None  # type: MyWebSocketHandler
         self.web_handler = None  # type: MyWebPageHandler
@@ -50,14 +51,6 @@ class MainApp:
         self.port_var.set(9999)
         self.detail_var.trace("w", self.detail_var_changed)
         self.detail_var.set("")
-
-        # Thread that will handle io loop
-        def _run(loop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        self.ioloop = asyncio.new_event_loop()  # type: asyncio.BaseEventLoop
-        threading.Thread(target=partial(_run, self.ioloop), daemon=True).start()
 
     def create_widgets(self, parent: tk.Frame):
         # Port
@@ -92,13 +85,9 @@ class MainApp:
             self.detail_var.set("Connected")
 
             await asyncio.sleep(10)
-            # await self.socket_handler.broadcast_text("all your base are belong to us")
-            await asyncio.sleep(1)
-            # self.server.close_requests()
-            # await self.server.close()
-            # await self.socket_handler.close_websockets()
+            await self.socket_handler.broadcast_text("all your base are belong to us")
 
-        asyncio.run_coroutine_threadsafe(_connect(), self.ioloop)
+        self.io(_connect())  # Schedule on asyncio loop
 
     def open_webbrowser_clicked(self):
         port = int(self.port_var.get())
@@ -111,7 +100,7 @@ class MainApp:
         detail = self.detail_var.get()
         if self.socket_handler:
             msg = {"detail": detail}
-            asyncio.run_coroutine_threadsafe(self.socket_handler.broadcast_json(msg), self.ioloop)
+            self.io(self.socket_handler.broadcast_json(msg))
 
 
 class MyWebPageHandler(WebHandler):
@@ -179,9 +168,8 @@ class MyWebSocketHandler(WebsocketHandler):
         await super().on_websocket(route, ws)
 
     async def on_message(self, route: str, ws: web.WebSocketResponse, ws_msg_from_client: aiohttp.WSMessage):
-        # print("Received websocket message", ws_msg_from_client)
         msg = ws_msg_from_client.json()
-        self.parent.detail_var.set(msg.get("detail"))
+        self.parent.tk(self.parent.detail_var.set, msg.get("detail"))  # Schedule on gui thread
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ import tkinter as tk
 import asyncio
 from functools import partial
 
+from handy.tk_asyncio_base import TkAsyncioBaseApp
+
 __author__ = "Robert Harder"
 
 
@@ -20,8 +22,9 @@ def main():
     tk_root.mainloop()
 
 
-class Main:
+class Main(TkAsyncioBaseApp):
     def __init__(self, tk_root):
+        super().__init__(tk_root)
         # Tk setup
         self.lbl_var = tk.StringVar()
         tk_root.title("Tk Asyncio Demo")
@@ -36,15 +39,7 @@ class Main:
             loop = asyncio.get_event_loop()  # Pulls the new event loop because that is who launched this coroutine
             await loop.create_datagram_endpoint(lambda: self, local_addr=("0.0.0.0", 9999))
 
-        # Thread that will handle io loop
-        def _run(loop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        ioloop = asyncio.new_event_loop()
-        asyncio.run_coroutine_threadsafe(_connect(), loop=ioloop)  # Schedules connection
-        threading.Thread(target=partial(_run, ioloop), daemon=True).start()
-        # print("__init__ thread:", threading.get_ident(), flush=True)
+        self.io(_connect())
 
     def connection_made(self, transport):
         print("connection_made")
