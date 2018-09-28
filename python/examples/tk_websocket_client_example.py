@@ -17,6 +17,8 @@ from handy.tk_asyncio_base import TkAsyncioBaseApp
 from handy.websocket_client import WebsocketClient
 
 __author__ = "Robert Harder"
+__email__ = "rob@iharder.net"
+__license__ = "Public Domain"
 
 ECHO_WS_URL = "wss://echo.websocket.org"
 PROXY = os.environ.get("https_proxy") or os.environ.get("http_proxy")

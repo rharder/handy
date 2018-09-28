@@ -9,6 +9,9 @@ import sys
 
 import appdirs  # pip install appdirs
 
+__author__ = "Robert Harder"
+__email__ = "rob@iharder.net"
+__license__ = "Public Domain"
 
 class Prefs:
     """
