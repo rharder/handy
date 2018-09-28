@@ -9,6 +9,7 @@ import sys
 import tkinter as tk
 import traceback
 from concurrent.futures import CancelledError
+from functools import partial
 
 from aiohttp import WSMsgType  # pip install aiohttp
 
@@ -50,16 +51,14 @@ class MainApp(TkAsyncioBaseApp):
         self.ws_client = None
 
         # View / Control
-        self.txt_input = None  # type: tk.Entry
-        # self.btn_connect = None  # type: tk.Button
+        self.txt_input: tk.Entry = None
         self.create_widgets(self.root)
 
         # Connections
         self.input_var.trace("w", self.input_var_changed)
 
         self.status = "Click connect to begin."
-        # self.connect_clicked()
-        # self.io(print, "hello world", file=sys.stderr)
+        self.connect_clicked()
 
     @property
     def status(self):
@@ -68,20 +67,12 @@ class MainApp(TkAsyncioBaseApp):
     @status.setter
     def status(self, val):
         self.tk(self.status_var.set, str(val))
-        #
-        # if self._ioloop == asyncio.get_event_loop():
-        #     # Set the status across event loops/threads by scheduling on tk thread
-        #     self.tk(self.status_var.set, str(val))
-        # else:
-        #     # Already on tk thread so set the variable directly
-        #     self.status_var.set(str(val))
 
-    def ioloop_exception_happened(self, loop: asyncio.BaseEventLoop, context: dict):
-        # super().ioloop_exception_happened(loop, context)
-        if "message" in context:
-            self.status = context["message"]
-        if "exception" in context:
-            self.status = context["exception"]
+    async def ioloop_exception_happened(self, extype, ex, tb, func):
+        self.status = ex
+
+    async def tkloop_exception_happened(self, extype, ex, tb, func):
+        self.status = ex
 
     def create_widgets(self, parent: tk.Misc):
         # Buttons
@@ -132,10 +123,8 @@ class MainApp(TkAsyncioBaseApp):
                     async for msg in self.ws_client:
                         if msg.type == WSMsgType.TEXT:  # When the server sends us text...
                             text = str(msg.data)
-                            # print("RECEIVED", text, flush=True)
-                            # self.log.debug("Rcvd {}".format(text))
-                            # self.status = "Received {}".format(text)
-                            # self.tk(self.echo_var.set, text)  # Display it in the response field
+                            print("RECEIVED", text, flush=True)
+                            self.status = "Received {}".format(text)
 
 
             except Exception as ex:
@@ -150,37 +139,33 @@ class MainApp(TkAsyncioBaseApp):
     def io_schedule_send(self, text):
         """Schedules data to be sent on the io loop.
 
-        Unlike the tk_schedule, what we do here is throw away previous
-        commands to send data and only send the most recent.
-        The very small sleep allows for when text is coming in fast
-        to not send every keystroke but to wait and send a larger
-        chunk of text.
+        Here we make use of the asyncio.Future that is returned by
+        the io() scheduling function so that if we get more data
+        to send before the last data was executed, we just cancel
+        the old network request and move along to the new one.
         """
-
-        # if self._io_send_id:
-        #     self._io_send_id.cancel()
-
+        if self._io_send_id:
+            self._io_send_id.cancel()
         self._io_send_id = self.io(self._send(text))
 
     async def _send(self, x):
+        # raise Exception(f"Fake Exception: {x}")
         try:
-            # await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
             if self.ws_client:
-                print("Sending {}".format(x))
-                # self.status = "Sending {}".format(x)
+                # print(f"Sending: {x}", flush=True)
                 await self.ws_client.send_str(x)
-                print("Sent {}".format(x))
                 self.status = "Sent {}".format(x)
 
         except CancelledError:
             # Whenever we arrive here, we realize that we just saved
             # ourselves an unnecessary send/receive cycle over the network.
             pass
+            # print(f"[x]: {x}", flush=True)
         except Exception as ex:
             print(ex.__class__.__name__, ex, file=sys.stderr)
             self.status = "{}: {}".format(ex.__class__.__name__, ex)
 
-    # if self._io_send_id:
 
 if __name__ == "__main__":
     main()
