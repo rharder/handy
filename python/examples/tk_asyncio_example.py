@@ -46,6 +46,16 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # Startup
         self.status = "Click connect to begin."
 
+        # async def test_add():
+        #
+        #     def add(x, y):
+        #         return x + y
+        #
+        #     x = self.tk(add, 2, 3)
+        #     print(f"2 + 3 = {x.result()}")
+        #
+        # self.io(test_add())
+
         # Demo how to cancel a task scheduled for the tk loop
         async def demo_cancel_tk_tasks():
             for i in range(1, 11):
@@ -67,11 +77,12 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         # x.cancel()  # Possible to cancel tasks on io loop
 
-        def demo_tk_exception():
+        def demo_tk_exception(foo, bar=None):
+            print(f"foo={foo}, bar={bar}", flush=True)
             print("Demoing an exception on the tk loop...", flush=True)
             raise Exception("Example exception raised in tk loop")
 
-        self.tk(demo_tk_exception)
+        self.tk(demo_tk_exception, 42, bar=23)
 
         def third_thread():
             time.sleep(8)
@@ -93,9 +104,9 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # await super().ioloop_exception_happened(extype, ex, tb, func)
         self.status = f"io loop: {ex}"
 
-    def tkloop_exception_happened(self, extype, ex, tb, func):
-        # super().tkloop_exception_happened(extype, ex, tb, func)
-        self.status = f"tk loop: {ex}"
+    # def tkloop_exception_happened(self, extype, ex, tb, func):
+    #     super().tkloop_exception_happened(extype, ex, tb, func)
+    #     self.status = f"tk loop: {ex}"
 
     def create_widgets(self, parent: tk.Misc):
         # Buttons
