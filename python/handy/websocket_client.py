@@ -20,7 +20,7 @@ __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 
 
-class WebsocketClient():
+class WebsocketClient:
     """A handy class for consuming websockets as a client.
 
 

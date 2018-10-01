@@ -13,6 +13,7 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 
+
 class Prefs:
     """
     Handles saving preferences between occurrences of running the script.
@@ -54,6 +55,7 @@ class Prefs:
         """
         mem = self.__memory()
         mem[key] = val
+        # noinspection PyBroadException
         try:
             mem.close()
         except:
@@ -85,7 +87,6 @@ class Prefs:
         :param app_author: Name of the app
         :return: A config file to use for saving prefs or None if unable
         """
-        config_file = None
         # Try the platform-appropriate preferences folder
         config_dir = appdirs.user_config_dir(app_name, app_author)
         if not os.path.isdir(config_dir):
@@ -97,6 +98,7 @@ class Prefs:
             home_dir = os.path.expanduser("~")
             config_dir = os.path.join(home_dir, ".{}".format(app_name))
             if not os.path.isdir(config_dir):
+                # noinspection PyBroadException
                 try:
                     os.makedirs(config_dir)
                     config_file = os.path.join(config_dir, "config")
@@ -109,4 +111,3 @@ class Prefs:
 
         return config_file
         # end class Prefs
-

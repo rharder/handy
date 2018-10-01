@@ -102,7 +102,7 @@ class AsyncReadConsole2:
                     if self.arc_stopping:
                         asyncio.run_coroutine_threadsafe(self.input_queue.put(None), self.main_loop)
                         break
-                    line = None
+
                     try:
                         if prompt:
                             line = input(prompt)
@@ -219,7 +219,7 @@ class AsyncReadConsole:
                     time.sleep(0.1)
                     line = input(self.prompt).rstrip()
 
-                except EOFError as ex:
+                except EOFError:
                     asyncio.run_coroutine_threadsafe(self.queue.put(None), self.loop)
                     break
                 if line == "EOF":

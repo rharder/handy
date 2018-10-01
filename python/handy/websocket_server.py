@@ -110,7 +110,7 @@ class WebServer:
             self._shutting_down = True
             await self.runner.cleanup()
 
-    async def _on_shutdown(self, app: web.Application):
+    async def _on_shutdown(self, _: web.Application):
         self.close_current_connections()
         self._running = False
         self._shutting_down = False

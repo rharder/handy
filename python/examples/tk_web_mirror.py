@@ -9,10 +9,8 @@ TCP Version: http://pastebin.com/ZGeDULR9
 import asyncio
 import json
 import logging
-import threading
 import tkinter as tk
 import webbrowser
-from functools import partial
 
 import aiohttp
 from aiohttp import web, WSMsgType
@@ -93,7 +91,6 @@ class MainApp(TkAsyncioBaseApp):
 
     def open_webbrowser_clicked(self):
         port = int(self.port_var.get())
-        url = "http://www.websocket.org/echo.html?location=ws://localhost:{}/ws".format(port)
         url = "http://localhost:{}/".format(port)
         webbrowser.open(url)
 

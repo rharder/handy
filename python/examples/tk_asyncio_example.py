@@ -56,13 +56,13 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         async def test_add():
             try:
 
-                def add(x, y):
+                def add(_x, _y):
                     # This mucks with the whole tk loop such as the
                     # next demo showing hwo to cancel tk tasks.
                     # You can see this by turning on the loop debugging above.
                     for i in range(3000):
                         math.factorial(i)
-                    return x + y
+                    return _x + _y
 
                 x = self.tk(add, 2, 3)
                 y = await x.async_result()
@@ -77,10 +77,10 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # Demo how to cancel a task scheduled for the tk loop
         async def demo_cancel_tk_tasks():
             for i in range(1, 11):
-                x = self.tk(print, i)
+                t = self.tk(print, i)
                 # await asyncio.sleep(0.1)  # If we delay, the queue will get processed before we cancel
                 if i % 2 == 1:
-                    x.cancel()
+                    t.cancel()
                     # Note some odd numbers may still get through!  It's a race!
 
         self.io(demo_cancel_tk_tasks())
@@ -91,9 +91,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
             print("Demoing an exception on the io loop...", flush=True)
             raise Exception("Example exception raised in io loop")
 
-        x = self.io(demo_io_exception())
-
-        # x.cancel()  # Possible to cancel tasks on io loop
+        self.io(demo_io_exception())
 
         def demo_tk_exception(foo, bar=None):
             print(f"foo={foo}, bar={bar}", flush=True)

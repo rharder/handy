@@ -8,10 +8,9 @@ import sys
 import threading
 import tkinter as tk
 import traceback
+import types
 from concurrent.futures import CancelledError
 from functools import partial
-# from types import TracebackType
-import types
 from typing import Callable, Union, Coroutine
 
 __author__ = "Robert Harder"
@@ -193,7 +192,7 @@ class TkAsyncioBaseApp:
                 # noinspection PyBroadException
                 try:
                     x.run()  # Will skip if task is cancelled
-                except Exception as ex:
+                except Exception:
                     extype, ex, tb = sys.exc_info()
                     self.tkloop_exception_happened(extype, ex, tb, x.job())
 
