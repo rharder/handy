@@ -9,7 +9,6 @@ import sys
 import tkinter as tk
 import traceback
 from concurrent.futures import CancelledError
-from functools import partial
 
 from aiohttp import WSMsgType  # pip install aiohttp
 
@@ -23,14 +22,6 @@ __license__ = "Public Domain"
 ECHO_WS_URL = "wss://echo.websocket.org"
 PROXY = os.environ.get("https_proxy") or os.environ.get("http_proxy")
 
-
-# ECHO_WS_URL = "ws://localhost:9990/cap"
-# PROXY = None
-
-# logging.basicConfig(level=logging.DEBUG)
-# logging.basicConfig(level=logging.INFO)
-
-# PROXY = None
 
 def main():
     tk_root = tk.Tk()
@@ -50,7 +41,7 @@ class MainApp(TkAsyncioBaseApp):
         self.echo_var = tk.StringVar()
         self.status_var = tk.StringVar()
         self._io_send_id: asyncio.Future = None
-        self.ws_client = None
+        self.ws_client: WebsocketClient = None
 
         # View / Control
         self.txt_input: tk.Entry = None
@@ -60,7 +51,7 @@ class MainApp(TkAsyncioBaseApp):
         self.input_var.trace("w", self.input_var_changed)
 
         self.status = "Click connect to begin."
-        self.connect_clicked()
+        # self.connect_clicked()
 
     @property
     def status(self):
@@ -125,9 +116,7 @@ class MainApp(TkAsyncioBaseApp):
                     async for msg in self.ws_client:
                         if msg.type == WSMsgType.TEXT:  # When the server sends us text...
                             text = str(msg.data)
-                            print("RECEIVED", text, flush=True)
                             self.status = "Received {}".format(text)
-
 
             except Exception as ex:
                 print(ex.__class__.__name__, ex, file=sys.stderr)

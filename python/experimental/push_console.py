@@ -15,7 +15,6 @@ from asyncpushbullet import AsyncPushbullet, LiveStreamListener
 
 from handy.async_command import AsyncReadConsole, async_execute_command, AsyncReadConsole2
 
-
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"

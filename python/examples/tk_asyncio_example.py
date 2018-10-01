@@ -3,15 +3,16 @@
 Example using the base class for Tk apps that will use asyncio.
 """
 import asyncio
+import math
 import os
-import queue
 import sys
 import threading
 import time
 import tkinter as tk
 import traceback
+import types
 from functools import partial
-from typing import Callable, Union, Coroutine
+from typing import Coroutine
 
 import aiohttp  # pip install aiohttp
 
@@ -46,15 +47,32 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # Startup
         self.status = "Click connect to begin."
 
-        # async def test_add():
-        #
-        #     def add(x, y):
-        #         return x + y
-        #
-        #     x = self.tk(add, 2, 3)
-        #     print(f"2 + 3 = {x.result()}")
-        #
-        # self.io(test_add())
+        # Loop debugging
+        self._ioloop.set_debug(False)
+
+        # Demonstrate not making the IO loop hang while
+        # something long is being computed on the tk loop,
+        # which by the way is a bad idea anyway.
+        async def test_add():
+            try:
+
+                def add(x, y):
+                    # This mucks with the whole tk loop such as the
+                    # next demo showing hwo to cancel tk tasks.
+                    # You can see this by turning on the loop debugging above.
+                    for i in range(3000):
+                        math.factorial(i)
+                    return x + y
+
+                x = self.tk(add, 2, 3)
+                y = await x.async_result()
+                # y = x.result()
+                print(f"2 + 3 = {y}")
+            except Exception as ex:
+                print("EX:", type(ex), ex)
+                traceback.print_tb(sys.exc_info()[2])
+
+        self.io(test_add())
 
         # Demo how to cancel a task scheduled for the tk loop
         async def demo_cancel_tk_tasks():
@@ -100,13 +118,17 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # Works from any thread
         self.tk(self.status_var.set, str(val))
 
-    async def ioloop_exception_happened(self, extype, ex, tb, func):
-        # await super().ioloop_exception_happened(extype, ex, tb, func)
-        self.status = f"io loop: {ex}"
+    async def ioloop_exception_happened(self, extype: type, ex: Exception, tb: types.TracebackType, coro: Coroutine):
+        # await super().ioloop_exception_happened(extype, ex, tb, coro)
+        msg = f"io loop: {ex}"
+        self.status = msg
+        print(msg, file=sys.stderr, flush=True)
 
-    # def tkloop_exception_happened(self, extype, ex, tb, func):
-    #     super().tkloop_exception_happened(extype, ex, tb, func)
-    #     self.status = f"tk loop: {ex}"
+    def tkloop_exception_happened(self, extype: type, ex: Exception, tb: types.TracebackType, func: partial):
+        # super().tkloop_exception_happened(extype, ex, tb, func)
+        msg = f"tk loop: {ex}"
+        self.status = msg
+        print(msg, file=sys.stderr, flush=True)
 
     def create_widgets(self, parent: tk.Misc):
         # Buttons
@@ -121,9 +143,9 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
     def connect_clicked(self):
         async def _connect():
-            # raise Exception("No, don't connect!")
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.URL, proxy=self.PROXY) as resp:  # type: aiohttp.ClientResponse
+                resp: aiohttp.ClientResponse
+                async with session.get(self.URL, proxy=self.PROXY) as resp:
                     text = await resp.text()
                     self.status = text  # Status line
                     self.tk(self.root.title, text)  # Window Title, for kicks

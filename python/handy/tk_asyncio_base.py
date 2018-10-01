@@ -3,17 +3,16 @@
 A base class for Tk apps that will use asyncio.
 """
 import asyncio
-import concurrent
 import queue
 import sys
 import threading
 import tkinter as tk
 import traceback
-# from concurrent.futures import Executor, CancelledError
 from concurrent.futures import CancelledError
 from functools import partial
-from typing import Callable, Union, Coroutine, Dict, List, Iterable
-from types import TracebackType
+# from types import TracebackType
+import types
+from typing import Callable, Union, Coroutine
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -70,7 +69,7 @@ class TkAsyncioBaseApp:
         threading.Thread(target=partial(_thread_run, self._ioloop), name="Thread-asyncio", daemon=True).start()
         _ready.wait()
 
-    async def ioloop_exception_happened(self, extype, ex, tb, func):
+    async def ioloop_exception_happened(self, extype: type, ex: Exception, tb: types.TracebackType, coro: Coroutine):
         """Called when there is an unhandled exception in a job that was
         scheduled on the io event loop.
 
@@ -81,15 +80,15 @@ class TkAsyncioBaseApp:
         :param extype: the exception type
         :param ex: the Exception object that was raised
         :param tb: the traceback associated with the exception
-        :param func: the scheduled function that caused the trouble
+        :param coro: the scheduled function that caused the trouble
         """
+        pass
         print("TkAsyncioBaseApp.ioloop_exception_happened called.  Override this function in your app.",
               file=sys.stderr, flush=True)
+        print(f"coro: {coro}", file=sys.stderr, flush=True)
         traceback.print_tb(tb)
 
-    def tkloop_exception_happened(self,
-                                  extype: type, ex: Exception, tb: TracebackType,
-                                  func: partial):
+    def tkloop_exception_happened(self, extype: type, ex: Exception, tb: types.TracebackType, func: partial):
         """Called when there is an unhandled exception in a job that was
         scheduled on the tk event loop.
 
@@ -102,13 +101,14 @@ class TkAsyncioBaseApp:
         :param tb: the traceback associated with the exception
         :param func: the scheduled function that caused the trouble
         """
+        pass
         print("TkAsyncioBaseApp.tkloop_exception_happened was called.  Override this function in your app.",
               file=sys.stderr, flush=True)
         print("Exception:", extype, ex, func, file=sys.stderr, flush=True)
         print(f"func: {func}", file=sys.stderr, flush=True)
         print(f"kargs: {func.args}", file=sys.stderr, flush=True)
         print(f"kwargs: {func.keywords}", file=sys.stderr, flush=True)
-        # traceback.print_tb(tb)
+        traceback.print_tb(tb)
 
     def io(self, func: Union[Coroutine, Callable], *kargs, **kwargs) -> Union[asyncio.Future, asyncio.Handle]:
         """
@@ -199,13 +199,25 @@ class TkAsyncioBaseApp:
 
 
 class TkTask:
+    """A task-like object shceduled from, presumably, an asyncio loop or other thread."""
+
     def __init__(self, func: Callable, *kargs, **kwargs):
         self._job: partial = partial(func, *kargs, **kwargs)
         self._cancelled: bool = False
         self._result = None
         self._result_ready: threading.Event = threading.Event()
+
         self._run_has_been_attempted: bool = False
         self._exception: Exception = None
+
+        self._host_loop: asyncio.BaseEventLoop = None
+        self._host_loop_result_ready: asyncio.Event = None
+        try:
+            self._host_loop = asyncio.get_event_loop()
+            self._host_loop_result_ready: asyncio.Event = asyncio.Event()
+        except RuntimeError:
+            # Whichever thread called this isn't using asyncio--that's OK
+            pass
 
     def run(self):
         if self._run_has_been_attempted:
@@ -213,14 +225,20 @@ class TkTask:
 
         elif not self.cancelled():
             try:
-                self._result = self._job()
+                x = self._job()
             except Exception as ex:
                 self._exception = ex
                 raise ex
             else:
-                self._result_ready.set()
+                self._set_result(x)
             finally:
                 self._run_has_been_attempted = True
+
+    def _set_result(self, val):
+        self._result = val
+        self._result_ready.set()
+        if self._host_loop:
+            self._host_loop.call_soon_threadsafe(self._host_loop_result_ready.set)
 
     def cancel(self):
         self._cancelled = True
@@ -234,50 +252,20 @@ class TkTask:
     def job(self) -> partial:
         return self._job
 
-    def result(self, timeout=None):
-        if self._exception is not None:
-            raise self._exception
-        elif self._cancelled:
-            raise CancelledError()
+    async def async_result(self, timeout=None):
+        """
+        Await a result without blocking an asyncio loop.
+
+        Raises concurrent.futures.TimeoutError if times out.
+        :param timeout:
+        :return:
+        """
+        if timeout is None:
+            await self._host_loop_result_ready.wait()
         else:
-            self._result_ready.wait(timeout)
-            return self._result
+            await asyncio.wait_for(self._host_loop_result_ready.wait(), timeout=timeout)
 
-class TkTask2:
-    def __init__(self, func: Callable, *kargs, **kwargs):
-        self._job: partial = partial(func, *kargs, **kwargs)
-        self._cancelled: bool = False
-        self._result = None
-        # self._result_ready: threading.Event = threading.Event()
-        self._run_has_been_attempted: bool = False
-        self._exception: Exception = None
-
-    def run(self):
-        if self._run_has_been_attempted:
-            raise RuntimeError(f"Job has already been run: {self._job}")
-
-        elif not self.cancelled():
-            try:
-                self._result = self._job()
-            except Exception as ex:
-                self._exception = ex
-                raise ex
-            # else:
-            #     self._result_ready.set()
-            finally:
-                self._run_has_been_attempted = True
-
-    def cancel(self):
-        self._cancelled = True
-
-    def cancelled(self) -> bool:
-        return self._cancelled
-
-    def done(self) -> bool:
-        return self._run_has_been_attempted or self._cancelled
-
-    def job(self) -> partial:
-        return self._job
+        return self.result()
 
     def result(self, timeout=None):
         if self._exception is not None:
@@ -285,5 +273,7 @@ class TkTask2:
         elif self._cancelled:
             raise CancelledError()
         else:
-            # self._result_ready.wait(timeout)
-            return self._result
+            if self._result_ready.wait(timeout):
+                return self._result
+            else:
+                raise TimeoutError(f"Timeout of {timeout} seconds exceeded.")
