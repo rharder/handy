@@ -8,12 +8,12 @@ June 2018 - Updated for aiohttp v3.3
 August 2018 - Updated for Python 3.7, made WebServer support multiple routes on one port
 """
 import asyncio
+import logging
 import weakref
 from functools import partial
 from typing import Dict, Set, List
 
 import aiohttp  # pip install aiohttp
-import logging
 from aiohttp import web
 
 __author__ = "Robert Harder"
