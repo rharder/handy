@@ -11,11 +11,11 @@ from collections import namedtuple
 from typing import List
 
 import asyncpushbullet  # pip install asyncpushbullet
-# from async_command import async_execute_command, AsyncReadConsole2
+# from async_command import async_execute_command, AsyncReadConsole
 from asyncpushbullet import AsyncPushbullet, LiveStreamListener, EphemeralComm
 # from asyncpushbullet import AsyncPushbullet
 
-from handy.async_command import AsyncReadConsole, async_execute_command, AsyncReadConsole2
+from handy.async_command import AsyncReadConsole, async_execute_command, AsyncReadConsole
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -64,7 +64,7 @@ async def run_console():
                 kmsg = CMsg(status="Console input connected to pushbullet")
                 await ec.send(kmsg)
 
-                async with AsyncReadConsole2("cmd input: ") as arc:
+                async with AsyncReadConsole("cmd input: ") as arc:
                     async def _dump_stdout():
                         try:
                             remote_stdout_closed = False
