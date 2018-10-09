@@ -20,7 +20,7 @@ import webbrowser
 
 import aiohttp
 from aiohttp import web
-
+sys.path.append("..")
 from handy.websocket_server import WebsocketHandler, WebServer
 
 __author__ = "Robert Harder"
@@ -40,7 +40,13 @@ def main():
     server.add_route("/time", tim_hndlr)
 
     # Queue their start operation
-    loop = asyncio.ProactorEventLoop()
+    loop: asyncio.BaseEventLoop
+    if sys.platform == 'win32':
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()  # Processes
+        asyncio.get_child_watcher()  # Main loop
+    
     asyncio.set_event_loop(loop)
     loop = asyncio.get_event_loop()
     loop.create_task(server.start())

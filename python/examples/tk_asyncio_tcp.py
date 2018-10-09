@@ -6,11 +6,12 @@ Discussed here: http://blog.iharder.net/2017/02/03/python-asyncio-and-tkinter-to
 UDP Version: http://pastebin.com/PeHHRR4E
 TCP Version: http://pastebin.com/ZGeDULR9
 """
+import sys
 import asyncio
 import threading
 import tkinter as tk
 from functools import partial
-
+sys.path.append("..")
 from handy.tk_asyncio_base import TkAsyncioBaseApp
 
 __author__ = "Robert Harder"

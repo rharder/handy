@@ -15,7 +15,7 @@ from functools import partial
 from typing import Coroutine
 
 import aiohttp  # pip install aiohttp
-
+sys.path.append("..")
 from handy.tk_asyncio_base import TkAsyncioBaseApp
 
 __author__ = "Robert Harder"
