@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo BeforeAndAfter class
+_Demo BeforeAndAfter class
 """
 
 import sys

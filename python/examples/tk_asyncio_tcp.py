@@ -28,7 +28,7 @@ class Main(TkAsyncioBaseApp):
         super().__init__(tk_root)
         # Tk setup
         self.lbl_var = tk.StringVar()
-        tk_root.title("Tk Asyncio Demo")
+        tk_root.title("Tk Asyncio _Demo")
         tk.Label(tk_root, text="Incoming Message, TCP Port 9999:").pack()
         tk.Label(tk_root, textvariable=self.lbl_var).pack()
 

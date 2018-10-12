@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo bindable variable classes
+_Demo bindable variable classes
 """
 
 import sys

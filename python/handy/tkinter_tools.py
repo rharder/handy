@@ -8,10 +8,59 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import scrolledtext
 
+from .prefs import Prefs
+
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
-__date__ = "10 Oct 2017"
+__date__ = "10 Oct 2018"
 __license__ = "Public Domain"
+
+
+class bind_window_state_to_prefs:
+    # Called like a function but is a class because we need to maintain some state
+
+    def __init__(self, window: tk.Tk, prefs: Prefs):
+        self.window: tk.Tk = window
+        self.prefs: Prefs = prefs
+        self.timer_id = None
+
+        self.restore_from_prefs()
+        self.window.bind("<Configure>", self.configure)
+
+    @property
+    def prefs_key(self):
+        title = self.window.title()
+        return f"window_state.{title}"
+
+    def restore_from_prefs(self):
+        prev_params = self.prefs.get(self.prefs_key, {})
+        x, y = prev_params.get("x"), prev_params.get("y")
+        w, h = prev_params.get("w"), prev_params.get("h")
+        state = prev_params.get("state")
+
+        if x and y and w and y:
+            self.window.geometry(f"{w}x{h}+{x}+{y}")
+        if state:
+            self.window.state(state)
+
+    def configure(self, event):
+        if self.window != event.widget:
+            # Ignore configure when it gets called for some other widget
+            return
+
+        params = self.prefs.get(self.prefs_key, {})
+        w, h = event.width, event.height
+        x, y = event.x, event.y
+        state = self.window.state()
+
+        params["state"] = state
+        if state != "zoomed":
+            params["x"], params["y"] = x, y
+            params["w"], params["h"] = w, h
+
+        if self.timer_id:
+            self.window.after_cancel(self.timer_id)
+        self.timer_id = self.window.after(20, self.prefs.set, self.prefs_key, params)
 
 
 def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):

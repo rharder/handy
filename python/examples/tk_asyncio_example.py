@@ -74,7 +74,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         self.io(test_add())
 
-        # Demo how to cancel a task scheduled for the tk loop
+        # _Demo how to cancel a task scheduled for the tk loop
         async def demo_cancel_tk_tasks():
             for i in range(1, 11):
                 t = self.tk(print, i)
@@ -85,7 +85,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         self.io(demo_cancel_tk_tasks())
 
-        # Demo an exception being raised and unhandled on the io loop
+        # _Demo an exception being raised and unhandled on the io loop
         async def demo_io_exception():
             await asyncio.sleep(4)
             print("Demoing an exception on the io loop...", flush=True)
