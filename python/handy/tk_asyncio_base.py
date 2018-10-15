@@ -42,6 +42,7 @@ class TkAsyncioBaseApp:
     """
 
     def __init__(self, base: tk.Misc):
+        print("TkAsyncioBaseApp init called")
         self.__tk_base: tk.Misc = base
 
         # Inter-thread communication

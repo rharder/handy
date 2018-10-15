@@ -65,6 +65,10 @@ def main():
     async def run():
         d = _Demo()
 
+        # Pycharm complains: Property 'foo' cannot be read
+        # but it executes just fine.
+        x = await d.foo
+
         print("Setting d.foo = 42")
         d.foo = 42
         print(f"Value of d.foo: {await d.foo}")

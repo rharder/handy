@@ -15,6 +15,7 @@ from functools import partial
 from typing import Coroutine
 
 import aiohttp  # pip install aiohttp
+
 sys.path.append("..")
 from handy.tk_asyncio_base import TkAsyncioBaseApp
 
@@ -35,6 +36,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
     def __init__(self, root: tk.Tk):
         super().__init__(root)
+
         self.root = root
         self.root.title("Example Tk Asyncio App")
 
@@ -50,10 +52,11 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
         # Loop debugging
         self._ioloop.set_debug(False)
 
+        # DEMO 1
         # Demonstrate not making the IO loop hang while
         # something long is being computed on the tk loop,
         # which by the way is a bad idea anyway.
-        async def test_add():
+        async def test_add_bad_hangs_both_loops():
             try:
 
                 def add(_x, _y):
@@ -72,8 +75,9 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
                 print("EX:", type(ex), ex)
                 traceback.print_tb(sys.exc_info()[2])
 
-        self.io(test_add())
+        # self.io(test_add_bad_hangs_both_loops())
 
+        # DEMO 2
         # _Demo how to cancel a task scheduled for the tk loop
         async def demo_cancel_tk_tasks():
             for i in range(1, 11):
@@ -85,6 +89,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         self.io(demo_cancel_tk_tasks())
 
+        # DEMO 3
         # _Demo an exception being raised and unhandled on the io loop
         async def demo_io_exception():
             await asyncio.sleep(4)
@@ -93,6 +98,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         self.io(demo_io_exception())
 
+        # DEMO 4
         def demo_tk_exception(foo, bar=None):
             print(f"foo={foo}, bar={bar}", flush=True)
             print("Demoing an exception on the tk loop...", flush=True)
@@ -100,6 +106,7 @@ class ExampleTkAsyncioApp(TkAsyncioBaseApp):
 
         self.tk(demo_tk_exception, 42, bar=23)
 
+        # DEMO 5
         def third_thread():
             time.sleep(8)
             print("Demoing scheduling from a third loop...", flush=True)
