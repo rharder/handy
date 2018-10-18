@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import hashlib
 import html
@@ -9,6 +10,9 @@ import sys
 import oletools.olevba3 as vba3  # pip install oletools
 
 __author__ = "Robert Harder"
+__email__ = "rob@iharder.net"
+__license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 def main():

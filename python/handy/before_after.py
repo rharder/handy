@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Uses a Python "with" construct to set up a timer with optional
 messages to display before and after code executes.
@@ -11,6 +12,7 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 

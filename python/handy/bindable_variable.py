@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Represents a variable that can bind listeners to changes in its state,
 similar to the tkinter.StringVar, IntVar, etc classes.
@@ -15,6 +16,7 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "5 Dec 2016"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 class Var:

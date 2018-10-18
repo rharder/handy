@@ -14,6 +14,7 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __date__ = "10 Oct 2018"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 class bind_window_state_to_prefs:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Easy to use Websocket Server.
 
@@ -19,6 +20,7 @@ from aiohttp import web
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 class WebServer:

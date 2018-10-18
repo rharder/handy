@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Provides an easy-to-subclass Nonblocking network server using asyncio and coroutines.
 Source: https://github.com/rharder/handy
@@ -9,9 +10,10 @@ from abc import ABCMeta, abstractmethod
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
-class NonblockingServer(metaclass=ABCMeta):
+class NonblockingServer:
     """
     Nonblocking Server class to aid in the mechanics.
     To use, subclass and override the handle_connection and handle_exception functions.

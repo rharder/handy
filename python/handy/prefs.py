@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """
 Handles saving preferences between occurrences of running a script.
 Source: https://github.com/rharder/handy
 """
 
 import os
-import shelve  # For Prefs class
+import shelve
 import sys
 
 import appdirs  # pip install appdirs
@@ -12,6 +13,7 @@ import appdirs  # pip install appdirs
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
+__homepage__ = "https://github.com/rharder/handy"
 
 
 class Prefs:
