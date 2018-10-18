@@ -10,11 +10,40 @@ from handy.tkinter_tools import *
 
 
 def main():
-    demo_bindable_text_area()
-    demo_formattable_tkstringvar()
-    demo_bind_tk_attribute()
-    demo_bind_tk_method()
+    # demo_bind_tk_attribute()
+    # demo_bind_tk_method()
+    # # demo_bindable_text_area()
+    # demo_formattable_tkstringvar()
     demo_toggled_frame()
+
+
+def demo_bind_tk_attribute():
+    window = tk.Tk()
+
+    var = tk.StringVar()
+
+    label = tk.Label(window, text="Background color is bound to variable")
+    label.pack()
+    bind_tk_var_to_tk_attribute(var, label, "bg")
+
+    colors = ["light gray", "light blue", "yellow", "green"]
+    for color in colors:
+        tk.Radiobutton(window, text=color, variable=var, value=color, bg=color).pack()
+    var.set(colors[0])
+
+    window.mainloop()
+
+
+def demo_bind_tk_method():
+    window = tk.Tk()
+    var = tk.StringVar()
+    bind_tk_var_to_method(var, window.title)
+
+    tk.Label(window, text="Window title:").pack(pady=10)
+    tk.Entry(window, textvariable=var, width=30).pack(padx=40, pady=10)
+
+    var.set("Success: demo_bind_tk_method")
+    window.mainloop()
 
 
 def demo_bindable_text_area():
@@ -65,35 +94,6 @@ def demo_formattable_tkstringvar():
     window.mainloop()
 
 
-def demo_bind_tk_attribute():
-    window = tk.Tk()
-
-    var = tk.StringVar()
-
-    label = tk.Label(window, text="Background color is bound to variable")
-    label.pack()
-    bind_tk_var_to_tk_attribute(label, "bg", var)
-
-    colors = ["light gray", "light blue", "yellow", "green"]
-    for color in colors:
-        tk.Radiobutton(window, text=color, variable=var, value=color, bg=color).pack()
-    var.set(colors[0])
-
-    window.mainloop()
-
-
-def demo_bind_tk_method():
-    window = tk.Tk()
-    var = tk.StringVar()
-    bind_tk_var_to_method(window.title, var)
-
-    tk.Label(window, text="Window title:").pack(pady=10)
-    tk.Entry(window, textvariable=var, width=30).pack(padx=40, pady=10)
-
-    var.set("Success: demo_bind_tk_method")
-    window.mainloop()
-
-
 def demo_toggled_frame():
     """ Demonstrate ToggledFrame """
 
@@ -118,7 +118,7 @@ def demo_toggled_frame():
     var = tk.StringVar()
     txt = tk.Entry(f2.subframe, textvariable=var)
     txt.pack(fill=tk.BOTH)
-    bind_tk_var_to_property(f2, "hidden_text", var)
+    bind_tk_var_to_property(var, f2, "hidden_text")
     var.set("Data here")
 
     # Nested frames

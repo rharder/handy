@@ -18,22 +18,23 @@ __homepage__ = "https://github.com/rharder/handy"
 
 
 class asyncproperty(property):
+    pass
 
     # Pycharm complains about __get__ beginning with async
     # but the program executes perfectly and as expected.
-    async def __get__(self, *args, **kwargs):
-        val = await super().__get__(*args, **kwargs)
-        check = val
-        if isinstance(check, partial):
-            check = check.func
-        if isinstance(check, asyncio.Future) or asyncio.iscoroutine(check):
-            val = await val
-        elif asyncio.iscoroutinefunction(check):
-            val = await val()
-        elif callable(check):
-            val = val()
-
-        return val
+    # async def __get__(self, *args, **kwargs):
+    #     val = await super().__get__(*args, **kwargs)
+    #     check = val
+    #     if isinstance(check, partial):
+    #         check = check.func
+    #     if isinstance(check, asyncio.Future) or asyncio.iscoroutine(check):
+    #         val = await val
+    #     elif asyncio.iscoroutinefunction(check):
+    #         val = await val()
+    #     elif callable(check):
+    #         val = val()
+    #
+    #     return val
 
 
 class _Demo:

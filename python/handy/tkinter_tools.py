@@ -64,7 +64,7 @@ class bind_window_state_to_prefs:
         self.timer_id = self.window.after(20, self.prefs.set, self.prefs_key, params)
 
 
-def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):
+def bind_tk_var_to_tk_attribute(tkvar, widget, attr_name):
     """
     Helper function to bind an arbitrary tk widget attribute to a tk.xxxVar.
 
@@ -74,7 +74,7 @@ def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):
         var = tk.StringVar()
         label = tk.Label(window, text="Change My Background")
         label.pack()
-        bind_tk_var_to_tk_attribute(label, "bg", var)
+        bind_tk_var_to_tk_attribute(var, label, "bg")
         var.set("light blue")
         window.mainloop()
 
@@ -82,14 +82,14 @@ def bind_tk_var_to_tk_attribute(widget, attr_name, tkvar):
 
         label.configure({"bg": "light blue"})
 
+    :param tkvar: the variable to bind to
     :param widget: the tk widget to be affected
     :param attr_name: the name of the attribute to bind
-    :param tkvar: the variable to bind to
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: widget.configure({attr_name: v.get()}))
 
 
-def bind_tk_var_to_method(func, tkvar):
+def bind_tk_var_to_method(tkvar, func):
     """
     Helper function to bind an arbitrary method to a tkvar value.
 
@@ -97,7 +97,7 @@ def bind_tk_var_to_method(func, tkvar):
 
         window = tk.Tk()
         var = tk.StringVar()
-        bind_tk_method(window.title, var)
+        bind_tk_method(var, window.title)
         var.set("My New Title")
         window.mainloop()
 
@@ -111,7 +111,7 @@ def bind_tk_var_to_method(func, tkvar):
     tkvar.trace("w", lambda _, __, ___, v=tkvar: func(tkvar.get()))
 
 
-def bind_tk_var_to_property(obj, prop_name, tkvar):
+def bind_tk_var_to_property(tkvar, obj, prop_name):
     """
     Helper function to bind an arbitrary property to a tkvar value.
 
@@ -124,7 +124,7 @@ def bind_tk_var_to_property(obj, prop_name, tkvar):
     window = tk.Tk()
     var = tk.StringVar()
     cat = Cat()
-    bind_tk_var_to_property(cat, "name", var)
+    bind_tk_var_to_property(var, cat, "name")
     var.set("Basement Cat")
     window.mainloop()
 
