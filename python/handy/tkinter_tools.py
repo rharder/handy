@@ -20,18 +20,14 @@ __homepage__ = "https://github.com/rharder/handy"
 class bind_window_state_to_prefs:
     # Called like a function but is a class because we need to maintain some state
 
-    def __init__(self, window: tk.Tk, prefs: Prefs):
+    def __init__(self, window: tk.Tk, prefs: Prefs, prefs_key: str):
         self.window: tk.Tk = window
         self.prefs: Prefs = prefs
+        self.prefs_key: str = prefs_key
         self.timer_id = None
 
-        self.restore_from_prefs()
         self.window.bind("<Configure>", self.configure)
-
-    @property
-    def prefs_key(self):
-        title = self.window.title()
-        return f"window_state.{title}"
+        self.restore_from_prefs()
 
     def restore_from_prefs(self):
         prev_params = self.prefs.get(self.prefs_key, {})
@@ -64,6 +60,32 @@ class bind_window_state_to_prefs:
         self.timer_id = self.window.after(20, self.prefs.set, self.prefs_key, params)
 
 
+def bind_tk_var_to_prefs(tkvar, prefs: Prefs, prefs_key: str, default=None):
+    """
+    Helper function to bind an arbitrary a tkvar to a Prefs object.
+
+    When this function is called, whatever value is already saved in
+    the Prefs object (or the provided default) will be put into the tkvar.
+
+    When the tkvar value changes, the Prefs object will be updated.
+
+    Example:
+
+        window = tk.Tk()
+        prefs = Prefs("myapp", "mydomain")
+        var = tk.StringVar()
+        bind_tk_var_to_prefs(var, prefs, "username")
+        window.mainloop()
+
+    :param tkvar: the variable to bind to
+    :param prefs: the Prefs object that holds the data
+    :param prefs_key: the key in the Prefs dictionary
+    :param default: the default value to set the tkvar
+    """
+    tkvar.trace("w", lambda _, __, ___, v=tkvar: prefs.set(prefs_key, tkvar.get()))
+    tkvar.set(prefs.get(prefs_key, default))
+
+
 def bind_tk_var_to_tk_attribute(tkvar, widget, attr_name):
     """
     Helper function to bind an arbitrary tk widget attribute to a tk.xxxVar.
@@ -87,6 +109,7 @@ def bind_tk_var_to_tk_attribute(tkvar, widget, attr_name):
     :param attr_name: the name of the attribute to bind
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: widget.configure({attr_name: v.get()}))
+    widget.configure({attr_name: tkvar.get()})
 
 
 def bind_tk_var_to_method(tkvar, func):
@@ -109,6 +132,7 @@ def bind_tk_var_to_method(tkvar, func):
     :param tkvar: the variable to bind to
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: func(tkvar.get()))
+    func(tkvar.get())
 
 
 def bind_tk_var_to_property(tkvar, obj, prop_name):
@@ -137,6 +161,7 @@ def bind_tk_var_to_property(tkvar, obj, prop_name):
     :param tk.Variable tkvar: the tk variable from which to get a value
     """
     tkvar.trace("w", lambda _, __, ___, v=tkvar: setattr(obj, prop_name, v.get()))
+    setattr(obj, prop_name, tkvar.get())
 
 
 class FormattableTkStringVar(tk.StringVar):
