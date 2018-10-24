@@ -19,7 +19,6 @@ from typing import Callable, AsyncIterator, Iterable, Union
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
-__homepage__ = "https://github.com/rharder/handy"
 
 
 def main():
@@ -27,18 +26,18 @@ def main():
     loop = asyncio.get_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(test())
-    loop.run_until_complete(
-        async_execute_command("cmd",
-                              provide_stdin=AsyncReadConsole(),
-                              handle_stdout=lambda x: print(f"{x.decode() if x else ''}", end="", flush=True),
-                              handle_stderr=lambda x: print(f"{x.decode() if x else ''}", end="", file=sys.stderr,
-                                                            flush=True)
-                              )
-    )
+    # loop.run_until_complete(
+    #     async_execute_command("cmd",
+    #                           provide_stdin=AsyncReadConsole(),
+    #                           handle_stdout=lambda x: print(f"{x.decode() if x else ''}", end="", flush=True),
+    #                           handle_stderr=lambda x: print(f"{x.decode() if x else ''}", end="", file=sys.stderr,
+    #                                                         flush=True)
+    #                           )
+    # )
 
 
 async def test():
-    print("This will test the awaitiness.")
+    print("This will test the awaitiness with a heartbeat.")
 
     async def _heartbeat():
         for _ in range(3):
@@ -52,6 +51,7 @@ async def test():
         print(f"you said '{resp}'")
 
     print("The prompt can be a function that updates each time it is displayed.")
+    print("The line that is returned can also be post-processed with a function.")
     async with AsyncReadConsole(
             prompt=lambda: "{}: ".format(datetime.datetime.now()),
             end=lambda x: f" ({len(x)})") \
@@ -97,19 +97,19 @@ class AsyncReadConsole:
         self.input_queue: asyncio.Queue = None  # on main loop
 
     def __del__(self):
-        print(f"__del__, prompt_queue: {self.prompt_queue.qsize()}", flush=True)
+        # print(f"__del__, prompt_queue: {self.prompt_queue.qsize()}", flush=True)
         while True:
             try:
                 x = self.prompt_queue.get_nowait()
-                print(f"\t{x}", flush=True)
+                # print(f"\t__del__ got prompt from queue: {x}", flush=True)
             except asyncio.QueueEmpty:
                 break
 
-        print(f"__del__, input_queue: {self.input_queue.qsize()}", flush=True)
+        # print(f"__del__, input_queue: {self.input_queue.qsize()}", flush=True)
         while True:
             try:
                 x = self.input_queue.get_nowait()
-                print(f"\t{x}", flush=True)
+                # print(f"\t__del__ got input from queue: {x}", flush=True)
             except asyncio.QueueEmpty:
                 break
 
@@ -136,51 +136,51 @@ class AsyncReadConsole:
                     while not self.arc_stopping:
                         # Do not proceed until someone actually wants a line of input
                         # because once the input() function is called, we're blocked there.
-                        print(f"AWAITING prompt_queue.get()",flush=True)
+                        # print(f"AWAITING prompt_queue.get()",flush=True)
                         prompt = await self.prompt_queue.get()
-                        print(f"GOT PROMPT: '{prompt}'", flush=True)
+                        # print(f"GOT PROMPT: '{prompt}'", flush=True)
                         await asyncio.sleep(0)
                         if self.arc_stopping:
-                            print("STOPPING, SEND None TO INPUT_QUEUE", flush=True)
+                            # print("STOPPING, SEND None TO INPUT_QUEUE", flush=True)
                             asyncio.run_coroutine_threadsafe(self.input_queue.put(None), self.main_loop)
                             break
                         line = None
                         try:
-                            print("LISTENING FOR STDIN INPUT...",flush=True)
+                            # print("LISTENING FOR STDIN INPUT...",flush=True)
                             if prompt:
                                 line = input(prompt)
                             else:
                                 line = input()
 
                         except EOFError as ex:
-                            print(f"EOFError {ex}", flush=True)
+                            # print(f"EOFError {ex}", flush=True)
                             asyncio.run_coroutine_threadsafe(self.input_queue.put(ex), self.main_loop)
                             break
 
                         else:
-                            print(f"ADD LINE TO INPUT QUEUE: {line}",flush=True)
+                            # print(f"ADD LINE TO INPUT QUEUE: {line}",flush=True)
                             asyncio.run_coroutine_threadsafe(self.input_queue.put(line), self.main_loop)
-                        finally:
-                            print("DONE WITH THIS ROUND OF INPUT")
+                        # finally:
+                            # print("DONE WITH THIS ROUND OF INPUT")
 
                         # assert line is not None, "Did not expect line to be none"
                         if line is None:
-                            print("DID NOT EXPECT THIS", flush=True)
+                            # print("DID NOT EXPECT THIS", flush=True)
                             break
-                        print("LAST LINE WHILE LOOP", flush=True)
+                        # print("LAST LINE WHILE LOOP", flush=True)
                     # await asyncio.sleep(0)  # one last time to yield to event loop
                     self.thread_loop = None
                 except Exception as ex:
                     print("Error in _async_thread_run:", ex.__class__.__name__, ex, file=sys.stderr, flush=True)
                     traceback.print_tb(sys.exc_info()[2])
-                finally:
-                    print("thread loop exiting")
+                # finally:
+                #     print("thread loop exiting")
 
 
             self.thread_loop.run_until_complete(_async_thread_run())
-            print("_async_thread_run is complete")
+            # print("_async_thread_run is complete")
             self.main_loop.call_soon_threadsafe(self.thread_stopped.set)
-            print("_thread_run exiting")
+            # print("_thread_run exiting")
 
         if self.thread_loop is None:
             self.thread = threading.Thread(target=_thread_run, name="Thread-console_input", daemon=True)
@@ -192,7 +192,7 @@ class AsyncReadConsole:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        print("__aexit__", flush=True)
+        # print("__aexit__", flush=True)
         if self.arc_stopping:
             print("Already stopping", flush=True)
             pass
@@ -201,7 +201,7 @@ class AsyncReadConsole:
             self.arc_stopping_evt.set()
             await self.input_queue.put(None)
             if self.thread_loop is not None:
-                print("PUTTING ONE LAST NONE", flush=True)
+                # print("PUTTING ONE LAST NONE", flush=True)
                 asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
         return
 
@@ -211,7 +211,7 @@ class AsyncReadConsole:
 
     async def __anext__(self, prompt=None, end=None) -> str:
         try:
-            print("__anext__", flush=True)
+            # print("__anext__", flush=True)
             if self.arc_stopping:
                 raise StopAsyncIteration()
 
@@ -234,16 +234,16 @@ class AsyncReadConsole:
             elif callable(prompt):
                 prompt = prompt()
 
-            print(f"__anext__ is putting a prompt on the queue: '{prompt}' ...", flush=True)
+            # print(f"__anext__ is putting a prompt on the queue: '{prompt}' ...", flush=True)
             asyncio.run_coroutine_threadsafe(self.prompt_queue.put(prompt), self.thread_loop)
-            print(f"__anext__ is awaiting the input queue...", flush=True)
+            # print(f"__anext__ is awaiting the input queue...", flush=True)
             line = await self.input_queue.get()
-            print(f"__anext__ got something from the input queue: '{line}'", flush=True)
+            # print(f"__anext__ got something from the input queue: '{line}'", flush=True)
 
             if isinstance(line, Exception):
                 raise StopAsyncIteration(line) from line
             if line is None:
-                print("LINE IS NONE, RAISING StopAsyncIteration", flush=True)
+                # print("LINE IS NONE, RAISING StopAsyncIteration", flush=True)
                 raise StopAsyncIteration()
             else:
                 # Resolve ending
@@ -281,9 +281,9 @@ class AsyncReadConsole:
         await self.input_queue.put(None)
         if self.thread_loop:
             asyncio.run_coroutine_threadsafe(self.prompt_queue.put(None), self.thread_loop)
-        print("WAITING FOR self.thread_stopped.wait()", flush=True)
+        # print("WAITING FOR self.thread_stopped.wait()", flush=True)
         await self.thread_stopped.wait()
-        print("ZZZ", self.__class__.__name__, "close() exit", flush=True)
+        # print("ZZZ", self.__class__.__name__, "close() exit", flush=True)
 
 
 async def async_execute_command(cmd, args: Iterable = (),
@@ -409,7 +409,7 @@ async def async_execute_command(cmd, args: Iterable = (),
         _thread_loop.run_until_complete(__run())
         parent_loop.call_soon_threadsafe(thread_done_evt.set)
         # parent_loop.call_soon_threadsafe(input_done_evt.set)
-        print("Thread-proc run closed.", flush=True)
+        # print("Thread-proc run closed.", flush=True)
 
     # Launch process is another thread, and wait for it to complete
     threading.Thread(target=partial(_thread_run, proc_loop), name="Thread-proc", daemon=daemon).start()
