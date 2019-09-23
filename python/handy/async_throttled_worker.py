@@ -25,11 +25,12 @@ def example():
         return delay
 
     async def doworkfast(val=None):
-        print(f"[{val}]", datetime.datetime.now())
+        print(f"[{val}]")#, datetime.datetime.now())
         # if val < 10:
         # await asyncio.sleep(random.random()*1)
         # if val == 12:
         #     await asyncio.sleep(2)
+        return val
 
     async def run():
         # async with AsyncThrottledWorker(num_workers=3) as atw:
@@ -38,8 +39,11 @@ def example():
 
         async with AsyncThrottledWorker(num_workers=3, max_hz=2, hz_timebase=datetime.timedelta(seconds=5)) as atw:
             for i in range(10):
-                await asyncio.sleep(random.random() * 2)
-                await atw.submit_nowait(doworkfast(i + 1))
+                print("Submitting", i)
+                # await atw.submit_nowait(doworkfast(i + 1))
+                # await atw.submit_wait_to_start(doworkfast(i+1))
+                r = await atw.submit_wait_to_finish(doworkfast(i))
+                print("received", r.result())
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
