@@ -12,7 +12,7 @@ import asyncio
 import logging
 import weakref
 from functools import partial
-from typing import Dict, Set, List
+from typing import Dict, Set, List, Optional
 
 import aiohttp  # pip install aiohttp
 from aiohttp import web
@@ -49,9 +49,9 @@ class WebServer:
         self.ssl_context = ssl_context
 
         # Internal use
-        self.app: web.Application = None
-        self.site: web.TCPSite = None
-        self.runner: web.AppRunner = None
+        self.app: web.Application = web.Application()
+        self.site: Optional[web.TCPSite] = None
+        self.runner: Optional[web.AppRunner] = None
         self.route_handlers: Dict[str, WebHandler] = {}
 
         self._running: bool = False
@@ -86,7 +86,6 @@ class WebServer:
 
         self._starting_up = True
 
-        self.app = web.Application()
         self.app['requests'] = []  # type: List[web.BaseRequest]
         self.app.on_shutdown.append(self._on_shutdown)
 
