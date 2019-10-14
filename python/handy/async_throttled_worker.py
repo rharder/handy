@@ -8,6 +8,7 @@ import datetime
 import math
 import random
 import sys
+import traceback
 from asyncio import Event, Queue, Future, Lock
 from typing import Coroutine, Iterable, List
 
@@ -19,31 +20,41 @@ __license__ = "Public Domain"
 def example():
     async def dowork(val=None):
         delay: float = 1 + (id(val) % 10) / 10
-        print(f"Task-{val}, delay={delay}, start")
+        # print(f"Task-{val}, delay={delay}, start")
         await asyncio.sleep(delay)
         print(f"Task-{val}, delay={delay}, end")
         return delay
 
     async def doworkfast(val=None):
-        print(f"[{val}]")#, datetime.datetime.now())
+        print(f"[{val}]", datetime.datetime.now())
         # if val < 10:
         # await asyncio.sleep(random.random()*1)
         # if val == 12:
         #     await asyncio.sleep(2)
-        return val
 
     async def run():
         # async with AsyncThrottledWorker(num_workers=3) as atw:
         #     for i in range(10):
         #         await atw.submit_nowait(dowork(i))
 
-        async with AsyncThrottledWorker(num_workers=3, max_hz=2, hz_timebase=datetime.timedelta(seconds=5)) as atw:
+        # async with AsyncThrottledWorker(num_workers=3, max_hz=2, hz_timebase=datetime.timedelta(seconds=5)) as atw:
+        #     for i in range(10):
+        #         await asyncio.sleep(random.random() * 2)
+        #         await atw.submit_nowait(doworkfast(i + 1))
+
+        atw = AsyncThrottledWorker(max_hz=3)
+
+        async def worker(name):
             for i in range(10):
-                print("Submitting", i)
-                # await atw.submit_nowait(doworkfast(i + 1))
-                # await atw.submit_wait_to_start(doworkfast(i+1))
-                r = await atw.submit_wait_to_finish(doworkfast(i))
-                print("received", r.result())
+                # x = await atw.submit_wait_to_finish(dowork(f"{name}-{i}"))
+                x = await atw.submit_nowait(dowork(f"{name}-{i}"))
+                print(name, i, x)
+
+        tasks = []
+        for n in ("Larry", "Moe", "Curly"):
+            tasks.append(asyncio.create_task(worker(n)))
+        await asyncio.gather(*tasks)
+        await atw.close()
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(run())
@@ -66,6 +77,9 @@ class ThrottledQueue(Queue):
         self._timestamps: List[datetime.datetime] = []
         self._lock: Lock = Lock()
 
+    def __str__(self):
+        return f"{self.__class__.__name__}(max_hz={self.max_hz}, hz_timebase={self.hz_timebase}, qsize={self.qsize()})"
+
     async def get(self):
         async with self._lock:
             item = await super().get()
@@ -82,6 +96,7 @@ class ThrottledQueue(Queue):
                 self._timestamps.pop(0)
 
             self._timestamps.append(datetime.datetime.now())
+        # print(f"{self} {id(self)} releasing {item}")
         return item
 
 
@@ -97,24 +112,26 @@ class AsyncThrottledWorker:
         self.hz_timebase: datetime.timedelta = hz_timebase
         self.todo: Queue
 
-    async def __aenter__(self):
         if self.max_hz is None:
             self.todo = Queue()
         else:
             self.todo = ThrottledQueue(max_hz=self.max_hz, hz_timebase=self.hz_timebase)
-        # self._timestamps_this_second = list()
         for _ in range(self.num_workers):
             asyncio.create_task(self._worker())
+
+    async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        assert exc_type is None
-        assert exc is None
-        assert tb is None
-
+        # print(f"{self.__class__.__name__}.__aexit__ ({exc_type}, {exc}, {tb})")
         for _ in range(self.num_workers):
             await self.todo.put(self.__QUEUE_COMPLETED__)
         await self.todo.join()
+        if exc:
+            raise exc
+
+    async def close(self):
+        await self.__aexit__(None, None, None)
 
     async def submit_nowait(self, coro: Coroutine) -> Future:
         """Submits a coroutine to be executed and returns immediately with a Future object
@@ -173,12 +190,17 @@ class AsyncThrottledWorker:
         """Executes coroutines"""
         completed: bool = False
         while not completed:
-            work = await self.todo.get()
-            if work == self.__QUEUE_COMPLETED__:
-                completed = True
+            try:
+                work = await self.todo.get()
+            except Exception as ex:
+                print(ex)
+                traceback.print_tb(sys.exc_info()[2])
             else:
-                await work
-            self.todo.task_done()
+                if work == self.__QUEUE_COMPLETED__:
+                    completed = True
+                else:
+                    await work
+                self.todo.task_done()
 
 
 if __name__ == '__main__':
