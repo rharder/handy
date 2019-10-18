@@ -52,7 +52,7 @@ def example():
 
         tasks = []
         for n in ("Larry", "Moe", "Curly"):
-            tasks.append(asyncio.create_task(worker(n)))
+            tasks.append(asyncio.get_event_loop().create_task(worker(n)))
         await asyncio.gather(*tasks)
         await atw.close()
 
@@ -117,7 +117,7 @@ class AsyncThrottledWorker:
         else:
             self.todo = ThrottledQueue(max_hz=self.max_hz, hz_timebase=self.hz_timebase)
         for _ in range(self.num_workers):
-            asyncio.create_task(self._worker())
+            asyncio.get_event_loop().create_task(self._worker())
 
     async def __aenter__(self):
         return self
