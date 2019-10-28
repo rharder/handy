@@ -8,7 +8,7 @@ Source: http://github.com/rharder/handy
 """
 
 import logging
-from typing import List
+from typing import List, Union, Tuple, Callable
 
 import time
 
@@ -396,15 +396,32 @@ class FormattableVar(Var):
     Output would be:
 
         My name is Joe, and I am 24 years old.
+
+    Additionally, in the list of variables such as [v1, v2] above, each element in the
+    list can instead be a tuple with the first element being the var and the second
+    element being a function that transforms the var's value before getting formatted.
+
+
+        v1 = Var("Joe")
+        v2 = Var(23.4)
+        fv = FormattableVar("My name is {}, and I am {} years old.", [v1, (v2, lambda x: int(x))])
+        fv.notify(print, value_only=True)
+        v2 += 1
+
+    Output would have the age rounded off rom 23.4 or 24.4 to just 24 because of the int(x) call.
+
     """
 
-    def __init__(self, str_format: str, bound_vars: List[Var], name=None):
+    def __init__(self, str_format: str, bound_vars: List[Union[Var, Tuple[Var, Callable]]], name=None):
         super().__init__(self, name=name)
         self.__format = str_format
         self.__vars = bound_vars
 
         for v in bound_vars:
-            v.add_listener(self.__var_changed)
+            if isinstance(v, tuple):
+                v[0].add_listener(self.__var_changed)
+            else:
+                v.add_listener(self.__var_changed)
 
         self.__update_format()
 
@@ -414,7 +431,15 @@ class FormattableVar(Var):
 
     def __update_format(self):
         """ Update the formattable string with new values. """
-        var_vals = [v.value for v in self.__vars]
+        # var_vals = [v.value for v in self.__vars]
+        var_vals = []
+        for x in self.__vars:
+            if isinstance(x, tuple):
+                var, func = x
+                val = func(var.value)
+                var_vals.append(val)
+            else:
+                var_vals.append(x.value)
         self.value = self.__format.format(*var_vals)
 
 
@@ -506,7 +531,6 @@ class BindableDict(dict):
                 self.__listeners_by_key[key] = []
             self.__listeners_by_key[key].append(listener)
 
-
     def remove_listener(self, listener, key=None):
         """
         Removes listener from the list of callable objects that are notified when the value changes
@@ -549,7 +573,6 @@ class BindableDict(dict):
                     for key_listener in self.__listeners_by_key.get(key, []).copy():
                         key_listener(self, key, old_val, new_val)
 
-
     def __enter__(self):
         """ For use with Python's "with" construct. """
         self._suspend_notifications = True
@@ -572,4 +595,3 @@ class BindableDict(dict):
 
         self.add_listener(lambda _, __, ___, new_val: tkvar.set(new_val), key)
         return tkvar
-

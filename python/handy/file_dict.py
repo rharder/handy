@@ -93,7 +93,7 @@ class FileDict(dict):
             gzip = self.gzip
 
         if filename:
-            print(f"Saving to {filename}:", self)
+            # print(f"Saving to {filename}:", self)
             if gzip:
                 with gziplib.open(filename, "wt") as f:
                     json.dump(self, f, indent=self.indent)

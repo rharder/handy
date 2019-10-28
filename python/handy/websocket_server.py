@@ -88,6 +88,7 @@ class WebServer:
 
         self._starting_up = True
 
+        # self.app = web.Application()
         self.app['requests'] = []  # type: List[web.BaseRequest]
         self.app.on_shutdown.append(self._on_shutdown)
 
