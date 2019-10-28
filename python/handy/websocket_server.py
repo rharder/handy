@@ -10,6 +10,8 @@ August 2018 - Updated for Python 3.7, made WebServer support multiple routes on 
 """
 import asyncio
 import logging
+import sys
+import traceback
 import weakref
 from functools import partial
 from typing import Dict, Set, List, Optional
@@ -34,14 +36,14 @@ class WebServer:
 
     """
 
-    def __init__(self, host: str = None, port: int = None, ssl_context=None):
+    def __init__(self, host: str = None, port: int = None, ssl_context=None, middlewares=None):
         """
         Create a new WebServer that will listen on the given port.
 
         :param port: The port on which to listen
         """
         super().__init__()
-        self.log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Passed parameters
         self.host: str = host
@@ -49,7 +51,7 @@ class WebServer:
         self.ssl_context = ssl_context
 
         # Internal use
-        self.app: web.Application = web.Application()
+        self.app: web.Application = web.Application(middlewares=middlewares)
         self.site: Optional[web.TCPSite] = None
         self.runner: Optional[web.AppRunner] = None
         self.route_handlers: Dict[str, WebHandler] = {}
@@ -145,7 +147,9 @@ class WebsocketHandler(WebHandler):
 
     def __init__(self, *kargs, **kwargs):
         super().__init__(*kargs, **kwargs)
-        self.websockets: Set[web.WebSocketResponse] = weakref.WeakSet()
+        self.websockets: weakref.WeakSet[web.WebSocketResponse] = weakref.WeakSet()
+        self.__log: logging.Logger = logging.getLogger(__name__)
+        # self.log.setLevel(logging.DEBUG)
 
     async def broadcast_json(self, msg):
         """ Converts msg to json and broadcasts the json data to all connected clients. """
@@ -173,6 +177,7 @@ class WebsocketHandler(WebHandler):
 
         This method is not meant to be overridden when subclassed.
         """
+        self.__log.debug(f"Incoming HTTP request for {route}: {request}")
         ws = web.WebSocketResponse()
         self.websockets.add(ws)
         try:
@@ -213,6 +218,9 @@ class WebsocketHandler(WebHandler):
         except RuntimeError as e:  # Socket closing throws RuntimeError
             print("RuntimeError - did socket close?", e, flush=True)
             pass
+        except Exception as ex:
+            self.__log.error(f"{__name__}.{self.__class__.__name__} Error dealing with a message: {type(ex)} {ex}")
+            # traceback.print_tb(sys.exc_info()[2])
         finally:
             await self.on_close(route, ws)
 
