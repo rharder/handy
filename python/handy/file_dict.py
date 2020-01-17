@@ -3,9 +3,10 @@
 """
 A file-backed dictionary.
 """
-
+import asyncio
 import gzip as gziplib
 import json
+from concurrent.futures.thread import ThreadPoolExecutor
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -33,6 +34,13 @@ def example():
     # fd.force_save(filename)
     with open(filename) as f:
         print(f"{filename} CONTENTS: ", f.read())
+
+    async def run():
+        print("reading async")
+        fd = await FileDict.async_load("example.json")
+        print(fd)
+
+    asyncio.get_event_loop().run_until_complete(run())
 
 
 class FileDict(dict):
@@ -79,6 +87,11 @@ class FileDict(dict):
         dict.__setitem__(self, key, val)
         if not self._suspend_save:
             self.force_save()
+
+    @staticmethod
+    async def async_load(filename):
+        fd = await asyncio.get_event_loop().run_in_executor(ThreadPoolExecutor(),FileDict, filename)
+        return fd
 
     def update(self, *args, **kwargs):
         with self:  # Suspend save until all updates are complete
