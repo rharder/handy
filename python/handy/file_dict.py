@@ -15,35 +15,55 @@ __homepage__ = "https://github.com/rharder/handy"
 
 
 def example():
+    asyncio.get_event_loop().set_debug(True)
     filename = "example.json"
     # filename = None
     x = {"a": "b"}
     fd = FileDict(filename, {"a": "b"})
-    fd.update({1: 1, 2: 2})
+    # fd.update({1: 1, 2: 2})
+    # with fd:
+    #     for x in range(1000):
+    #         k = "hello world " * x
+    #         v = "hello world " * x
+    #         fd[k] = v
     # fd = FileDict()
     # fd.filename = filename
     # fd.reload(filename)
-    print("fd", fd)
-    fd["hello"] = "world"
-    print("fd", fd)
+    # print("fd", fd)
+    # fd["hello"] = "world"
+    # print("fd", fd)
     # fd["b"] = "c"
     # with fd:
     #     fd["c"] = "c"
     #     fd["d"] = "d"
     # filename = "example.json"
     # fd.force_save(filename)
-    with open(filename) as f:
-        print(f"{filename} CONTENTS: ", f.read())
+    # with open(filename) as f:
+    #     print(f"{filename} CONTENTS: ", f.read())
 
     async def run():
         print("reading async")
-        fd = await FileDict.async_load("example.json")
-        print(fd)
+        fd2 = await FileDict.async_load("example.json")
+        print(f"Read items: {len(fd2.keys()):,}")
+        async with fd2:
+            fd2["added async"] = "here"
+            fd2["also async"] = "here also"
+
+            print("Adding records")
+            for x in range(1000):
+                k = "hello world " * x
+                v = "hello world " * x
+                fd2[k] = v
+        print("done")
+
+        # print(fd)
 
     asyncio.get_event_loop().run_until_complete(run())
 
 
 class FileDict(dict):
+    EXEC: ThreadPoolExecutor = None
+
     def __init__(self, filename: str = None, *kargs, **kwargs):
         self.filename = filename
         self.gzip: bool = self.filename.lower().endswith(".gz") if self.filename else False
@@ -90,8 +110,20 @@ class FileDict(dict):
 
     @staticmethod
     async def async_load(filename):
-        fd = await asyncio.get_event_loop().run_in_executor(ThreadPoolExecutor(),FileDict, filename)
+        FileDict.EXEC = FileDict.EXEC or ThreadPoolExecutor()
+        fd = await asyncio.get_event_loop().run_in_executor(FileDict.EXEC, FileDict, filename)
         return fd
+
+    async def __aenter__(self):
+        self._suspend_save = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self._suspend_save = False
+        FileDict.EXEC = FileDict.EXEC or ThreadPoolExecutor()
+        await asyncio.get_event_loop().run_in_executor(FileDict.EXEC, self.force_save)
+        if exc_val:
+            raise exc_val
 
     def update(self, *args, **kwargs):
         with self:  # Suspend save until all updates are complete
