@@ -6,12 +6,14 @@ A file-backed dictionary.
 
 import gzip as gziplib
 import json
+import logging
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 __homepage__ = "https://github.com/rharder/handy"
 
+logger = logging.getLogger(__name__)
 
 def example():
     filename = "example.json"
@@ -51,9 +53,11 @@ class FileDict(dict):
                 if self.gzip:
                     with gziplib.open(self.filename, "rt") as f:
                         d = json.load(f)
+                    logger.info(f"Loaded {len(d):,} entries from {self.filename}")
                 else:
                     with open(self.filename) as f:
                         d = json.load(f)
+                    logger.info(f"Loaded {len(d):,} entries from {self.filename}")
             except FileNotFoundError as ex:
                 # print(type(ex), ex)
                 pass
@@ -93,13 +97,15 @@ class FileDict(dict):
             gzip = self.gzip
 
         if filename:
-            # print(f"Saving to {filename}:", self)
+            d = dict(self)
             if gzip:
                 with gziplib.open(filename, "wt") as f:
-                    json.dump(self, f, indent=self.indent)
+                    json.dump(d, f, indent=self.indent)
+                logger.info(f"Saved {len(d):,} entries to {self.filename}")
             else:
                 with open(filename, "w") as f:
-                    json.dump(self, f, indent=self.indent)
+                    json.dump(d, f, indent=self.indent)
+                logger.info(f"Saved {len(d):,} entries to {self.filename}")
 
     def reload(self, filename: str = None):
         filename = filename or self.filename
@@ -108,9 +114,11 @@ class FileDict(dict):
             if gzip:
                 with gziplib.open(filename, "rt") as f:
                     d = json.load(f)
+                logger.info(f"Reloaded {len(d):,} entries from {filename}")
             else:
                 with open(filename) as f:
                     d = json.load(f)
+                logger.info(f"Reloaded {len(d):,} entries from {filename}")
             super().update(d)
 
 
