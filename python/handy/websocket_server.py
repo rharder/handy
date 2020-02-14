@@ -10,8 +10,6 @@ August 2018 - Updated for Python 3.7, made WebServer support multiple routes on 
 """
 import asyncio
 import logging
-import sys
-import traceback
 import weakref
 from functools import partial
 from typing import Dict, Set, List, Optional
@@ -19,10 +17,13 @@ from typing import Dict, Set, List, Optional
 import aiohttp  # pip install aiohttp
 from aiohttp import web
 
+
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 __homepage__ = "https://github.com/rharder/handy"
+
+logger = logging.getLogger(__name__)
 
 
 class WebServer:
@@ -36,14 +37,13 @@ class WebServer:
 
     """
 
-    def __init__(self, host: str = None, port: int = None, ssl_context=None, middlewares=None):
+    def __init__(self, host: str = None, port: int = None, ssl_context=None):
         """
         Create a new WebServer that will listen on the given port.
 
         :param port: The port on which to listen
         """
         super().__init__()
-        self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Passed parameters
         self.host: str = host
@@ -51,10 +51,11 @@ class WebServer:
         self.ssl_context = ssl_context
 
         # Internal use
-        self.app: web.Application = web.Application(middlewares=middlewares)
+        self.app: web.Application = web.Application()
         self.site: Optional[web.TCPSite] = None
         self.runner: Optional[web.AppRunner] = None
         self.route_handlers: Dict[str, WebHandler] = {}
+        self.static_handlers: Dict[str, Dict] = {}
 
         self._running: bool = False
         self._shutting_down: bool = False
@@ -88,13 +89,15 @@ class WebServer:
 
         self._starting_up = True
 
-        # self.app = web.Application()
         self.app['requests'] = []  # type: List[web.BaseRequest]
         self.app.on_shutdown.append(self._on_shutdown)
 
         # Connect routes
-        for route in self.route_handlers.keys():
-            self.app.router.add_get(route, partial(self.incoming_http_handler, route))
+        for _route in self.route_handlers.keys():  # Dynamic handlers
+            # noinspection PyTypeChecker
+            self.app.router.add_get(_route, partial(self.incoming_http_handler, _route))
+        for _url_path, _kwargs in self.static_handlers.items():  # Static directory handlers
+            self.app.router.add_static(_url_path, **_kwargs)
 
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
@@ -129,6 +132,24 @@ class WebServer:
             raise RuntimeError("Cannot add a route after server is already running.")
         self.route_handlers[route] = handler
 
+    def add_static(self, url_path: str, local_path: str, **kwargs):
+        """
+        Add a static route from the given url_path to the given local_path.
+
+        Example:
+        srv.add_static("/www", "./htdocs")
+        :param url_path: path in the url
+        :param local_path: path to local directory
+        :param kwargs: other args from aiohttp.web_routedef.UrlDispatcher.add_static()
+        :return:
+        """
+        # server.app.router.add_static("/www", self.htdocs, show_index=False)
+        if self.running:
+            raise RuntimeError("Cannot add a static route after server is already running.")
+        kwargs = kwargs or {}
+        kwargs["path"] = local_path
+        self.static_handlers[url_path] = kwargs
+
     async def incoming_http_handler(self, route: str, request: web.BaseRequest):
         self.app['requests'].append(request)
         try:
@@ -148,9 +169,7 @@ class WebsocketHandler(WebHandler):
 
     def __init__(self, *kargs, **kwargs):
         super().__init__(*kargs, **kwargs)
-        self.websockets: weakref.WeakSet[web.WebSocketResponse] = weakref.WeakSet()
-        self.__log: logging.Logger = logging.getLogger(__name__)
-        # self.log.setLevel(logging.DEBUG)
+        self.websockets: Set[web.WebSocketResponse] = weakref.WeakSet()
 
     async def broadcast_json(self, msg):
         """ Converts msg to json and broadcasts the json data to all connected clients. """
@@ -178,7 +197,6 @@ class WebsocketHandler(WebHandler):
 
         This method is not meant to be overridden when subclassed.
         """
-        self.__log.debug(f"Incoming HTTP request for {route}: {request}")
         ws = web.WebSocketResponse()
         self.websockets.add(ws)
         try:
@@ -219,9 +237,6 @@ class WebsocketHandler(WebHandler):
         except RuntimeError as e:  # Socket closing throws RuntimeError
             print("RuntimeError - did socket close?", e, flush=True)
             pass
-        except Exception as ex:
-            self.__log.error(f"{__name__}.{self.__class__.__name__} Error dealing with a message: {type(ex)} {ex}")
-            # traceback.print_tb(sys.exc_info()[2])
         finally:
             await self.on_close(route, ws)
 

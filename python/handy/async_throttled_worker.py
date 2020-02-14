@@ -5,8 +5,6 @@ Running large numbers of coroutines a limited number at a time.
 """
 import asyncio
 import datetime
-import math
-import random
 import sys
 import traceback
 from asyncio import Event, Queue, Future, Lock
