@@ -16,38 +16,36 @@ import java.util.stream.StreamSupport;
  *
  *
  * <code>
-     // This approach allows you to inspect some statistics as the stream progresses
-     System.out.println("Example 1");
-     BatchSpliterator<Integer> split = new BatchSpliterator<>(Stream.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 3);
-     split.stream()
-        .peek(x -> System.out.println("Elements Consumed: " + split.getNumElementsConsumed()))
-        .peek(x -> System.out.println("Batches Produced : " + split.getNumBatchesProduced()))
-        .forEach(System.out::println);
-
-
-     // This example shows a simple example using the static helper function "batch"
-     System.out.println("Example 2");
-     BatchSpliterator.batch(Stream.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 3).forEach(System.out::println);
-
-     // This example demonstrates that the underlying stream is consumed "live" not all at once:
-     System.out.println("Example 3");
-     Stream<String> stream = Stream.generate(new Supplier<String>() {
-         AtomicLong seq = new AtomicLong(1);
-
-         @Override
-         public String get() {
-             // Show exactly when get() is called on the underlying stream
-             String s = String.format("seq-%d", seq.getAndIncrement());
-             System.out.println("Generated: " + s);
-             LockSupport.parkNanos("simulated workload", TimeUnit.MILLISECONDS.toNanos((long) (100 * Math.random())));
-             return s;
-         }
-     });
-     BatchSpliterator.batch(stream.limit(10), 3).forEach(System.out::println);
- * </code>
+ * // This approach allows you to inspect some statistics as the stream progresses
+ * System.out.println("Example 1");
+ * BatchSpliterator<Integer> split = new BatchSpliterator<>(Stream.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 3);
+ * split.stream()
+ * .peek(x -> System.out.println("Elements Consumed: " + split.getNumElementsConsumed()))
+ * .peek(x -> System.out.println("Batches Produced : " + split.getNumBatchesProduced()))
+ * .forEach(System.out::println);
+ * <p>
+ * <p>
+ * // This example shows a simple example using the static helper function "batch"
+ * System.out.println("Example 2");
+ * BatchSpliterator.batch(Stream.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), 3).forEach(System.out::println);
+ * <p>
+ * // This example demonstrates that the underlying stream is consumed "live" not all at once:
+ * System.out.println("Example 3");
+ * Stream<String> stream = Stream.generate(new Supplier<String>() {
+ * AtomicLong seq = new AtomicLong(1);
  *
  * @param <T>
  * @author Robert Harder
+ * public String get() {
+ * // Show exactly when get() is called on the underlying stream
+ * String s = String.format("seq-%d", seq.getAndIncrement());
+ * System.out.println("Generated: " + s);
+ * LockSupport.parkNanos("simulated workload", TimeUnit.MILLISECONDS.toNanos((long) (100 * Math.random())));
+ * return s;
+ * }
+ * });
+ * BatchSpliterator.batch(stream.limit(10), 3).forEach(System.out::println);
+ * </code>
  */
 public class BatchSpliterator<T> implements Spliterator<List<T>> {
     private final static Logger logger = Logger.getLogger(BatchSpliterator.class.getName());
