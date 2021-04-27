@@ -84,6 +84,7 @@ public class SpliteratorBuilder<T> implements Spliterator<T> {
     public static void main(String[] args) {
         final SpliteratorBuilder<String> builder = new SpliteratorBuilder<>();
 
+        // With some random delays, add 10 strings to the stream on another thread
         CompletableFuture.runAsync(() -> {
             for (int i = 0; i < 10; i++) {
                 LockSupport.parkNanos((long) (Math.random() * 500000000));
