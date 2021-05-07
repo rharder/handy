@@ -15,6 +15,7 @@ __homepage__ = "https://github.com/rharder/handy"
 
 logger = logging.getLogger(__name__)
 
+
 def example():
     filename = "example.json"
     # filename = None
@@ -41,7 +42,7 @@ class FileDict(dict):
     def __init__(self, filename: str = None, *kargs, **kwargs):
         self.filename = filename
         self.gzip: bool = self.filename.lower().endswith(".gz") if self.filename else False
-        self.indent = None
+        self._indent = None
         self._suspend_save = True
 
         super().__init__(*kargs, **kwargs)
@@ -61,6 +62,8 @@ class FileDict(dict):
             except FileNotFoundError as ex:
                 # print(type(ex), ex)
                 pass
+            except json.JSONDecodeError as ex:
+                logger.error(f"Error reading json file {self.filename}: {ex}")
             else:
                 super().update(d)
 
@@ -68,6 +71,25 @@ class FileDict(dict):
             # print("Saving because we had elements in the constructor")
             self.force_save()
         self._suspend_save = False
+
+    @property
+    def indent(self):
+        return self._indent
+
+    @indent.setter
+    def indent(self, val):
+        self._indent = val
+        self.force_save()
+
+    def set_indent(self, val):
+        """
+        Sets the indent and returns self so you can chain a contructor.
+        :param val: indent value or None if no indent
+        :return: FileDict self
+        :rtype: FileDict
+        """
+        self.indent = val
+        return self
 
     def __enter__(self):
         self._suspend_save = True
@@ -100,11 +122,11 @@ class FileDict(dict):
             d = dict(self)
             if gzip:
                 with gziplib.open(filename, "wt") as f:
-                    json.dump(d, f, indent=self.indent)
+                    json.dump(d, f, indent=self.indent, default=str)
                 logger.info(f"Saved {len(d):,} entries to {self.filename}")
             else:
                 with open(filename, "w") as f:
-                    json.dump(d, f, indent=self.indent)
+                    json.dump(d, f, indent=self.indent, default=str)
                 logger.info(f"Saved {len(d):,} entries to {self.filename}")
 
     def reload(self, filename: str = None):
