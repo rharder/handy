@@ -8,6 +8,8 @@ import logging
 import logging.handlers
 
 import platform
+import subprocess
+import syslog
 import time
 from os import PathLike
 
@@ -130,8 +132,8 @@ def config(console_level: int = None,
         handlers.append(console_handler)
         del _fmt
 
-    # Syslog for platforms that have it
-    if syslog_level and platform.system() in ("Linux"):  # , "Darwin"):
+    # Linux syslog
+    if syslog_level and platform.system() == "Linux":
         _fmt = info_log_format if console_level >= logging.INFO else verbose_log_format
         _address = "/dev/log"  # TODO: different platforms have different places this is supposed to go
         syslog_handler = logging.handlers.SysLogHandler()
@@ -141,6 +143,22 @@ def config(console_level: int = None,
         syslog_handler.setFormatter(logging.Formatter(_fmt))
         handlers.append(syslog_handler)
         del _address, _fmt
+
+    # Mac syslog seems to be broken with Python
+    # Use custom MacLog Handler, which runs logger subprocess for each record
+    if syslog_level and platform.system() == "Darwin":
+
+        class MacLogHandler(logging.Handler):
+            def emit(self, record):
+                if platform.system() == "Darwin":
+                    subprocess.run(["logger", self.format(record)])
+
+        _fmt = info_log_format if console_level >= logging.INFO else verbose_log_format
+        syslog_handler = MacLogHandler()
+        syslog_handler.setLevel(syslog_level)
+        syslog_handler.setFormatter(logging.Formatter(_fmt))
+        handlers.append(syslog_handler)
+        del _fmt
 
     # Multiple log files are possible
     if log_files:
@@ -162,8 +180,7 @@ def config(console_level: int = None,
         for _quieter in hush:
             logging.getLogger(_quieter).setLevel(logging.WARNING)
 
-
-if __name__ == '__main__':
+def example():
     config(
         console_level=logging.INFO,
         syslog_level=logging.INFO,
@@ -181,13 +198,26 @@ if __name__ == '__main__':
         ],
         other_handlers=[
             # logging.handlers.NTEventLogHandler("foobar"),
-            # logging.handlers.SysLogHandler()
+            # logging.handlers.SysLogHandler(address='/var/run/syslog', facility=syslog.LOG_LOCAL1)
+            # MacLogHandler()
         ]
     )
     logger.info("Here's an INFO example")
     logger.error("Here's an ERROR example")
     logger.debug("Here's a DEBUG example")
 
+    import syslog
+
+    syslog.syslog("foobar hello")
+
     for i in range(20):
-        logger.info(f"Log entry {i}")
+        logger.info(f"foobar Log entry {i}")
         time.sleep(0.5)
+
+
+
+if __name__ == '__main__':
+    try:
+        example()
+    except KeyboardInterrupt:
+        pass
