@@ -9,7 +9,6 @@ import logging.handlers
 
 import platform
 import subprocess
-import syslog
 import time
 from os import PathLike
 
@@ -205,10 +204,6 @@ def example():
     logger.info("Here's an INFO example")
     logger.error("Here's an ERROR example")
     logger.debug("Here's a DEBUG example")
-
-    import syslog
-
-    syslog.syslog("foobar hello")
 
     for i in range(20):
         logger.info(f"foobar Log entry {i}")
