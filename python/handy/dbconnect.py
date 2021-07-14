@@ -26,3 +26,16 @@ class DbConnect():
     def __exit__(self, type, value, traceback):
         self.connection.commit()
         self.connection.close()
+
+"""
+Simpler like this:
+
+    @contextmanager
+    def connection(self):
+        _conn = sqlite3.connect(self.path)
+        try:
+            yield _conn
+        finally:
+            _conn.close()
+
+"""
