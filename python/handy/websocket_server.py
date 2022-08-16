@@ -12,11 +12,10 @@ import asyncio
 import logging
 import weakref
 from functools import partial
-from typing import Dict, Set, List, Optional
+from typing import Dict, Set, List, Optional, Coroutine, Any, Callable
 
 import aiohttp  # pip install aiohttp
 from aiohttp import web
-
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
@@ -54,7 +53,7 @@ class WebServer:
         self.app: web.Application = web.Application()
         self.site: Optional[web.TCPSite] = None
         self.runner: Optional[web.AppRunner] = None
-        self.route_handlers: Dict[str, WebHandler] = {}
+        self.route_handlers: Dict[str, Callable[[str, web.BaseRequest], web.Response]] = {}
         self.static_handlers: Dict[str, Dict] = {}
 
         self._running: bool = False
@@ -150,10 +149,11 @@ class WebServer:
         kwargs["path"] = local_path
         self.static_handlers[url_path] = kwargs
 
-    async def incoming_http_handler(self, route: str, request: web.BaseRequest):
+    async def incoming_http_handler(self, route: str, request: web.BaseRequest) -> web.Response:
         self.app['requests'].append(request)
         try:
-            resp = await self.route_handlers[route].on_incoming_http(route, request)
+            # resp = await self.route_handlers[route].on_incoming_http(route, request)
+            resp = await self.route_handlers[route](route, request)
         finally:
             self.app['requests'].remove(request)
         return resp
@@ -161,7 +161,7 @@ class WebServer:
 
 class WebHandler:
 
-    async def on_incoming_http(self, route: str, request: web.BaseRequest):
+    async def on_incoming_http(self, route: str, request: web.BaseRequest) -> web.Response:
         return web.Response(body=str(self.__class__.__name__))
 
 
