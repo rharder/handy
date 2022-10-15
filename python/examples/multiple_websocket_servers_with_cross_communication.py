@@ -35,9 +35,9 @@ def main():
     rnd_hndlr = RandomQuoteHandler(interval=2)
     tim_hndlr = TimeOfDayHandler()
 
-    server.add_route("/cap", cap_hndlr)
-    server.add_route("/rnd", rnd_hndlr)
-    server.add_route("/time", tim_hndlr)
+    server.add_get_route("/cap", cap_hndlr)
+    server.add_get_route("/rnd", rnd_hndlr)
+    server.add_get_route("/time", tim_hndlr)
 
     # Queue their start operation
     loop: asyncio.BaseEventLoop
