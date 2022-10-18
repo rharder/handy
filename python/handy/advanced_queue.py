@@ -31,6 +31,10 @@ class AdvancedAsyncQueue(asyncio.Queue[T]):
         """Returns all items in queue, or an empty list, and blocks until
         the with block is processed.  This allows a convenient pattern
         where you can work on a batch of items with tasks that will expire.
+
+        async with q.get_all_if_any_and_block() as items:
+            for item in items:
+                ...
         """
         async with self.hold:
             all_items = await self.get_all_if_any()
@@ -40,24 +44,26 @@ class AdvancedAsyncQueue(asyncio.Queue[T]):
         return list(self._queue)
 
     async def get_all_if_any(self) -> List[T]:
-        """Gets all items but returns immediately of queue is empty"""
-        all = []
+        """
+        Gets all items but returns immediately of queue is empty.
+        """
+        all_items = []
         try:
             while True:
-                all.append(self.get_nowait())
+                all_items.append(self.get_nowait())
         except asyncio.queues.QueueEmpty:
             pass
-        return all
+        return all_items
 
     async def get_all(self) -> List[T]:
-        """Gets all items from the queue."""
-        all = [await self.get()]
+        """Gets all items from the queue. Blocks until at least one item can be retrieved."""
+        all_items = [await self.get()]
         try:
             while True:
-                all.append(self.get_nowait())
+                all_items.append(self.get_nowait())
         except asyncio.queues.QueueEmpty:
             pass
-        return all
+        return all_items
 
     async def put_all(self, values: List[T]):
         """Puts all the items from the list individually in the queue, signalling when the last item is added"""
@@ -73,23 +79,18 @@ class AdvancedAsyncQueue(asyncio.Queue[T]):
     @asynccontextmanager
     async def get_unless_exception(self) -> T:
         """
-
         async with queue.get_unless_exception() as x:
             blah(x)
             blahblah(x)
             # Exception is raised!
 
         # queue will have x in it again
-
-
-
-        :return:
         """
         obj = await self.get()
         try:
             yield obj
         except Exception as ex:
-            # Put obj back in queue
+            # Put obj back in queue at the beginning
             objs = [obj]
             try:
                 while True:
