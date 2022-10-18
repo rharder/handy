@@ -13,6 +13,7 @@ import inspect
 import logging
 import weakref
 from functools import partial
+from os import PathLike
 from typing import Dict, Set, List, Optional, Coroutine, Any, Callable, Tuple, Awaitable, Union
 
 import aiohttp  # pip install aiohttp
@@ -165,7 +166,7 @@ class WebServer:
     #         raise RuntimeError("Cannot add a route after server is already running.")
     #     self.ws_route_handlers[route] = ws_handler
 
-    def add_static(self, url_path: str, local_path: str, **kwargs):
+    def add_static(self, url_path: str, local_path: Union[str, bytes, PathLike], **kwargs):
         """
         Add a static route from the given url_path to the given local_path.
 
@@ -190,13 +191,13 @@ class WebServer:
             if route in self._all_handlers:
                 _method, _handler = self._all_handlers[route]
                 if isinstance(_handler, WebHandler):
-                    logger.info(f"Calling WebHandler for {route}: {_handler}")
+                    logger.debug(f"Calling WebHandler for {route}: {_handler}")
                     resp = await _handler.on_incoming_http(route=route, request=request)
                 elif asyncio.iscoroutinefunction(_handler):
-                    logger.info(f"Awaiting coroutine for {route}: {_handler}")
+                    logger.debug(f"Awaiting coroutine for {route}: {_handler}")
                     resp = await _handler(route, request)
                 elif callable(_handler):
-                    logger.info(f"Calling function for {route}: {_handler}")
+                    logger.debug(f"Calling function for {route}: {_handler}")
                     resp = _handler(route, request)
         finally:
             self.app['requests'].remove(request)
