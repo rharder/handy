@@ -276,8 +276,8 @@ class SqliteDict(UserDict):
                     success = True
                 except Exception as ex:
                     # It might just be an unsupported data type, in which case we'll try json or pickling it instead
-                    logger.debug(f"Could not save - might not be native data type, ok, will try pickling: {ex}, "
-                                 f"key={key}, value={value}")
+                    # logger.debug(f"Could not save - might not be native data type, ok, will try pickling: {ex}, "
+                    #              f"key={key}, value={value}")
                     success = False
             if not success:
                 if self.force_pickle:
