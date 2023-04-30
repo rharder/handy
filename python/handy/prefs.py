@@ -65,6 +65,20 @@ class Prefs:
             pass
         return val
 
+    def clear(self, key):
+        """Clears a value from the preferences.
+        This will cause the next call to get() to return the default response, if provided.
+        Calling set('key', None) will not clear the preference."""
+        mem = self.__memory()
+        if key in mem:
+            del mem[key]
+        # noinspection PyBroadException
+        try:
+            mem.close()
+        except:
+            # print("error closing")
+            pass
+
     def __memory(self):
         """
         Returns a dictionary-like object for reading/writing preferences.

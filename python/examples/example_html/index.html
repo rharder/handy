@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Example Web Server</title>
+    <script src="ws.js" type="text/javascript"></script>
+    <script src="main.js" type="text/javascript"></script>
+</head>
+<body>
+<h1>Example Web Server</h1>
+<ul>
+    <li><a href="/stats">/stats</a></li>
+</ul>
+
+<h2>Form Post Example</h2>
+<form action="/savethings" method="POST" enctype="multipart/form-data">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" placeholder="username"/>
+    <br />
+    <label for="file">Optional File</label>
+    <input id="file" name="file" type="file"/>
+    <br />
+    <button type="submit">Post the Form!</button>
+</form>
+
+<h2>Websockets</h2>
+<h3>Input</h3>
+<textarea
+        id="ws-input"
+        name="ws-input"
+        oninput="updateLiveWebsocketInput()"
+></textarea>
+
+
+<h3>Output from All Websocket Clients</h3>
+<p>Try opening a <a href="/" target="_blank">duplicate window</a>.</p>
+<pre id="ws-output"></pre>
+
+</body>
+</html>

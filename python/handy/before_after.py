@@ -14,7 +14,7 @@ __date__ = "5 Dec 2016"
 __license__ = "Public Domain"
 __homepage__ = "https://github.com/rharder/handy"
 
-
+from typing import Optional
 
 
 class BeforeAndAfter:
@@ -29,7 +29,8 @@ class BeforeAndAfter:
                 math.factorial(x)
     """
 
-    def __init__(self, before_msg: str = None,
+    def __init__(self,
+                 before_msg: str = None,
                  after_msg: str = None,
                  error_msg: str = None,
                  file=sys.stdout):
@@ -38,8 +39,16 @@ class BeforeAndAfter:
         self.after_msg = after_msg
         self.__file = file
         self.__error_msg = error_msg
-        self.__start = None  # type: float
-        self.__end = None  # type: float
+        self.__start: Optional[float] = None
+        self.__end: Optional[float] = None
+
+    @property
+    def after_msg(self):
+        return self.__after_msg
+
+    @after_msg.setter
+    def after_msg(self, val):
+        self.__after_msg = val
 
     def __enter__(self):
         if self.__before_msg is not None:
@@ -57,4 +66,3 @@ class BeforeAndAfter:
     @property
     def elapsed(self):
         return self.__end - self.__start
-

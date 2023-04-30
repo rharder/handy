@@ -32,7 +32,7 @@ def main():
 
     server = WebServer(port=port, ssl_context=sslcontext)
     stream_handler = StreamResponseHandler()
-    server.add_route("/", stream_handler)
+    server.add_route("/", stream_handler.on_incoming_http)
 
     # Queue their start operation
     loop = asyncio.get_event_loop()
