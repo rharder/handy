@@ -35,7 +35,7 @@ class BeforeAndAfter:
                  file=sys.stdout):
 
         self.__before_msg = before_msg
-        self.__after_msg = after_msg
+        self.after_msg = after_msg
         self.__file = file
         self.__error_msg = error_msg
         self.__start = None  # type: float
@@ -50,8 +50,8 @@ class BeforeAndAfter:
     def __exit__(self, ex_type, ex_value, ex_traceback):
         self.__end = time.time()
         if ex_type is None:  # No error
-            if self.__after_msg is not None:
-                msg = self.__after_msg.format(self.elapsed)
+            if self.after_msg is not None:
+                msg = self.after_msg.format(self.elapsed)
                 print(msg, file=self.__file)
 
     @property

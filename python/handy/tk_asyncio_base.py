@@ -35,16 +35,15 @@ class TkAsyncioBaseApp:
 
         def my_button_clicked(self):
             self.my_button.configure(state=tk.DISABLED)
-            self.io(connect())  # Launch a coroutine on a thread managing an asyncio loop
+            self.on_async(connect())  # Launch a coroutine on a thread managing an asyncio loop
 
         async def connect(self):
             await some_connection_stuff()
-            self.tk(self.my_button.configure, state=tk.NORMAL)  # Run GUI commands on main thread
+            self.on_tk(self.my_button.configure, state=tk.NORMAL)  # Run GUI commands on main thread
 
     """
 
     def __init__(self, base: tk.Misc):
-        print("TkAsyncioBaseApp init called")
         self.__tk_base: tk.Misc = base
 
         # Inter-thread communication
@@ -53,9 +52,9 @@ class TkAsyncioBaseApp:
         self.__tk_after_ids: queue.Queue = queue.Queue()  # Requests to process tk queue
 
         # IO Loop
-        self.__create_io_loop()
+        self.__create_async_loop()
 
-    def __create_io_loop(self):
+    def __create_async_loop(self):
         """Creates a new thread to manage an asyncio event loop."""
         if self._ioloop is not None:
             raise Exception("An IO loop is already running.")
@@ -112,17 +111,19 @@ class TkAsyncioBaseApp:
         print(f"kwargs: {func.keywords}", file=sys.stderr, flush=True)
         traceback.print_tb(tb)
 
-    def io(self, func: Union[Coroutine, Callable], *kargs, **kwargs) -> Union[asyncio.Future, asyncio.Handle]:
+    def on_async(self,
+                 func: Union[Coroutine, Callable],
+                 callback: Callable = None) -> Union[asyncio.Future, asyncio.Handle]:
         """
         Schedule a coroutine or regular function to be called on the io event loop.
 
-        self.io(some_coroutine())
-        self.io(some_func, "some arg")
+        self.on_async(some_coroutine())
+        self.on_async(some_func, "some arg")
 
         The positional *kargs and named **kwargs arguments only apply when
         a non-coroutine function is passed such as:
 
-            self.io(print, "hello world", file=sys.stderr)
+            self.on_async(print, "hello world", file=sys.stderr)
 
         Returns a Future (for coroutines) or Handle (for regular functions) that can
         be used to cancel or otherwise inspect the scheduled job.
@@ -145,16 +146,54 @@ class TkAsyncioBaseApp:
         def _func_run():
             # noinspection PyBroadException
             try:
-                func(*kargs, **kwargs)
+                func()
             except Exception:
-                self.tkloop_exception_happened(*sys.exc_info(), func, *kargs, **kwargs)
+                self.tkloop_exception_happened(*sys.exc_info(), func)
 
         if asyncio.iscoroutine(func):
-            return asyncio.run_coroutine_threadsafe(_coro_run(), self._ioloop)
+            fut = asyncio.run_coroutine_threadsafe(_coro_run(), self._ioloop)
         else:
-            return self._ioloop.call_soon_threadsafe(_func_run)
+            fut = self._ioloop.call_soon_threadsafe(_func_run)
 
-    def tk(self, func: Callable, *kargs, **kwargs):
+        # Optional callback on the original GUI event thread
+        if callback:
+            fut.add_done_callback(lambda f: self.on_tk(callback, f.result()))
+
+        return fut
+
+    def on_thread(self, func: Callable, callback: Callable = None):
+        """Run a non-async function on another thread and make an optional callback
+        to the event thread when complete. The results returned from the
+        first function (on the other thread) will be passed as the argument to the callback.
+
+        Example:
+
+            def long_task():
+                # This is run on another thread (but not async)
+                results = load_some_big_file_from_disk_or_something()
+                return results
+
+            def cleanup(file_contents)
+                # This is run on GUI event thread
+                some_tk_widget.configure(text=file_contents)
+
+            self.on_thread(func=long_task, callback=cleanup)
+
+        """
+
+        def _func_run():
+            # noinspection PyBroadException
+            try:
+                result = func()
+                if callback:
+                    self.on_tk(callback, result)
+            except Exception:
+                # Maybe the following needs to change - this is not running on the tk loop
+                self.tkloop_exception_happened(*sys.exc_info(), func)
+
+        threading.Thread(target=_func_run).start()
+
+    def on_tk(self, func: Callable, *kargs, **kwargs):
         """
         Schedule a function to be called on the Tk GUI event loop.
 
@@ -201,7 +240,7 @@ class TkAsyncioBaseApp:
 
 
 class TkTask:
-    """A task-like object shceduled from, presumably, an asyncio loop or other thread."""
+    """A task-like object scheduled from, presumably, an asyncio loop or other thread."""
 
     def __init__(self, func: Callable, *kargs, **kwargs):
         self._job: partial = partial(func, *kargs, **kwargs)
