@@ -9,22 +9,21 @@ June 2018 - Updated for aiohttp v3.3
 August 2018 - Updated for Python 3.7, made WebServer support multiple routes on one port
 """
 import asyncio
-import inspect
 import logging
 import weakref
 from functools import partial
 from os import PathLike
-from typing import Dict, Set, List, Optional, Coroutine, Any, Callable, Tuple, Awaitable, Union
+from pathlib import Path
+from typing import Dict, Set, List, Optional, Callable, Tuple, Union
 
 import aiohttp  # pip install aiohttp
 from aiohttp import web, hdrs
+from aiohttp.typedefs import Handler
 
 __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 __homepage__ = "https://github.com/rharder/handy"
-
-from aiohttp.typedefs import Handler
 
 logger = logging.getLogger(__name__)
 
@@ -104,15 +103,6 @@ class WebServer:
             _method, _handler = _val
             self.app.router.add_route(method=_method, path=_route, handler=partial(self.incoming_http_handler, _route))
 
-        # # Connect routes
-        # for _route in self.route_handlers.keys():  # Dynamic handlers
-        #     # noinspection PyTypeChecker
-        #     self.app.router.add_get(_route, partial(self.incoming_http_handler, _route))
-        #
-        # for _ws_route, _ws_handler in self.ws_route_handlers.items():
-        #     # noinspection PyTypeChecker
-        #     self.app.router.add_get(_ws_route, handler=_ws_handler)
-
         for _url_path, _kwargs in self.static_handlers.items():  # Static directory handlers
             self.app.router.add_static(_url_path, **_kwargs)
 
@@ -181,23 +171,24 @@ class WebServer:
         if self.running:
             raise RuntimeError("Cannot add a static route after server is already running.")
         kwargs = kwargs or {}
-        kwargs["path"] = local_path
+        kwargs["path"] = Path(local_path)
         self.static_handlers[url_path] = kwargs
 
     async def incoming_http_handler(self, route: str, request: web.BaseRequest) -> web.Response:
         self.app['requests'].append(request)
+        logger.info(f"Responding to HTTP request {request.url}")
         resp = None
         try:
             if route in self._all_handlers:
                 _method, _handler = self._all_handlers[route]
                 if isinstance(_handler, WebHandler):
-                    logger.debug(f"Calling WebHandler for {route}: {_handler}")
+                    # logger.debug(f"Calling WebHandler for {route}: {_handler}")
                     resp = await _handler.on_incoming_http(route=route, request=request)
                 elif asyncio.iscoroutinefunction(_handler):
-                    logger.debug(f"Awaiting coroutine for {route}: {_handler}")
+                    # logger.debug(f"Awaiting coroutine for {route}: {_handler}")
                     resp = await _handler(route, request)
                 elif callable(_handler):
-                    logger.debug(f"Calling function for {route}: {_handler}")
+                    # logger.debug(f"Calling function for {route}: {_handler}")
                     resp = _handler(route, request)
         finally:
             self.app['requests'].remove(request)
