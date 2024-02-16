@@ -36,7 +36,7 @@ class BeforeAndAfter:
                  file=sys.stdout):
 
         self.__before_msg = before_msg
-        self.__after_msg = after_msg
+        self.after_msg = after_msg
         self.__file = file
         self.__error_msg = error_msg
         self.__start: Optional[float] = None
