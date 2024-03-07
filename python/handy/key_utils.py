@@ -138,8 +138,8 @@ class AccountKeys:
         """Verifies and decrypts an encrypted blob of data. Raises an exception if any
         part of the process fails."""
         return KeyUtility.authenticated_decrypt_blob(blob=blob,
-                                                     receiver_private_encryption_key=self.private_encryption_key,
-                                                     sender_public_encryption_key=sender_public_encryption_key)
+                                                     sender_public_encryption_key=sender_public_encryption_key,
+                                                     receiver_private_encryption_key=self.private_encryption_key)
 
     def to_json(self) -> Dict:
         record = {}
@@ -252,8 +252,8 @@ class KeyUtility:
 
     @staticmethod
     def authenticated_decrypt_blob(blob: Union[EncryptedMessage, str, bytes],
-                                   receiver_private_encryption_key: Union[PrivateKey, bytes],
-                                   sender_public_encryption_key: Union[PublicKey, bytes]) -> bytes:
+                                   sender_public_encryption_key: Union[PublicKey, bytes],
+                                   receiver_private_encryption_key: Union[PrivateKey, bytes]) -> bytes:
         blob = bytes.fromhex(blob) if isinstance(blob, str) else blob
         receiver_private_encryption_key = receiver_private_encryption_key \
             if isinstance(receiver_private_encryption_key, PrivateKey) \
