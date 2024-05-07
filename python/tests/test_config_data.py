@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os
-from datetime import datetime
-from pathlib import Path
 from unittest import TestCase
 
-from spaceutils.tle import TLE
-
-from mitrecollect.config_data import ConfigData
-from mitrecollect.messaging.legacy_messages import Portion, MU99, SU67, MultipleLines, MU15, GN00
+from handy.config_data import ConfigData
 
 
 class TestConfigData(TestCase):
