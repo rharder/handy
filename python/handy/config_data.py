@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional, Union, Any, Dict, List
 
 import yaml
-from colorama import Fore, Style
 
 logger = logging.getLogger(__name__)
 
