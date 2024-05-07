@@ -1,0 +1,14 @@
+LevelOne:
+  foo: bar
+  hello:
+    - world
+    - earth
+    - universe
+AnotherLevelOne:
+  alpha:
+    one: 1
+    two: 2
+    three: 3
+  bravo:
+    ten: 10
+    twenty: 20
