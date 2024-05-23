@@ -15,12 +15,9 @@ import uuid
 from collections import UserDict, namedtuple
 from datetime import datetime, timedelta
 from os import PathLike
-from typing import Optional, Union, Any, TypeVar
+from typing import Optional, Union, Any, TypeVar, Iterator, Dict
 
 __author__ = "Robert Harder"
-__email__ = "rob@iharder.net"
-__license__ = "Public Domain"
-__homepage__ = "https://github.com/rharder/handy"
 
 logger = logging.getLogger(__name__)
 CacheableItem = namedtuple("CacheableItem", "value createdAt expiration")
@@ -35,11 +32,15 @@ class Cacheable(UserDict[str, V]):
     def __init__(self,
                  filename: Union[str, bytes, PathLike] = None,
                  default_expiration: timedelta = None,
-                 prefix: str = None):
+                 prefix: str = None,
+                 data_backing: Dict = None):
         super().__init__()
         self.filename: Optional[str] = str(filename) if filename else None
-        self.default_expiration: Optional[timedelta] = default_expiration or self.DEFAULT_EXPIRATION_VAL
+        self.default_expiration: Optional[timedelta] = default_expiration \
+            if default_expiration is not None else self.DEFAULT_EXPIRATION_VAL
         self.prefix: Optional[str] = prefix or ""
+        if data_backing is not None:
+            self.data = data_backing
 
     def _keytransform(self, key: Any) -> str:
         return f"{self.prefix}.{key}" if self.prefix else str(key)
@@ -71,17 +72,31 @@ class Cacheable(UserDict[str, V]):
 
         return iter(final_keys)
 
+    def __delitem__(self, key):
+        # To avoid a race condition where we check that a key is present and then it expires right away,
+        # we are just going to "try" to del from each location, and catch any exceptions.
+        _key = self._keytransform(key)
+        try:
+            del self.data[_key]
+        except KeyError:
+            ...
+        if self.filename:
+            with shelve.open(self.filename) as db:
+                try:
+                    del db[key]
+                except KeyError:
+                    ...
+
     def __len__(self) -> int:
         return len(list(iter(self)))
 
     def __contains__(self, key: Any) -> bool:
-        _key = self._keytransform(key)
-        if _key in self.data:
+        try:
+            _ = self[key]
+        except KeyError:
+            return False
+        else:
             return True
-        elif self.filename:
-            with shelve.open(self.filename) as db:
-                return _key in db
-        return False
 
     def __getitem__(self, key: Any) -> V:
         """Returns the item at the given key and raises a KeyError if expired - just as if the key was not found"""
@@ -152,5 +167,7 @@ class Cacheable(UserDict[str, V]):
         composite_prefix = f"{self.prefix}.{prefix}" if self.prefix else str(prefix)
         return Cacheable(
             filename=self.filename,
-            default_expiration=default_expiration or self.default_expiration,
-            prefix=composite_prefix)
+            default_expiration=default_expiration \
+                if default_expiration is not None else self.default_expiration,
+            prefix=composite_prefix,
+            data_backing=self.data)
