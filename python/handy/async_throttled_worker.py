@@ -17,8 +17,6 @@ __author__ = "Robert Harder"
 __email__ = "rob@iharder.net"
 __license__ = "Public Domain"
 
-from spaceutils.dates import human_duration
-
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")

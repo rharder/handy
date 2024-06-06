@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import asyncio
-import json
 from datetime import datetime
-from pathlib import Path
 from unittest import TestCase
 
-from handy.advanced_queue import AdvancedAsyncQueue
-from handy.file_dict import FileDict
 from handy.sqlite_dict import SqliteDict
 
 

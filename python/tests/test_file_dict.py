@@ -29,8 +29,13 @@ class TestFileDict(TestCase):
         self.assertEqual("world", fd["hello"])
         self.assertEqual("world", self.get(filename, "hello"))
         self.assertEqual(1, len(fd))
+
+        fd2 = FileDict(filename)
+        self.assertEqual("world", fd2["hello"])
+
         del fd["hello"]
         self.assertEqual(0, len(fd))
+        x = self.get(filename, "hello")
         self.assertIsNone(self.get(filename, "hello"))
 
         #

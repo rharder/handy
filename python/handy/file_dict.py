@@ -8,6 +8,7 @@ import gzip as gziplib
 import json
 import logging
 import os
+from collections import UserDict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from time import sleep
@@ -50,7 +51,7 @@ def example():
     pprint(fd)
 
 
-class FileDict(dict):
+class FileDict(UserDict):
 
     def __init__(self, filename: str = None, *kargs, **kwargs):
         super().__init__(*kargs, **kwargs)
@@ -126,7 +127,8 @@ class FileDict(dict):
     def __getitem__(self, k):
         if self.reload_before_read and not self._suspend_save:
             self.reload()
-        return super().__getitem__(k)
+        return self.data[k]
+        # return super().__getitem__(k)
 
     def __enter__(self):
         self._suspend_save = True
@@ -139,9 +141,15 @@ class FileDict(dict):
             raise exc_val
 
     def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
+        self.data[key] = val
         if not self._suspend_save:
             self.force_save()
+
+    def __delitem__(self, key):
+        del self.data[key]
+        if not self._suspend_save:
+            self.force_save()
+
 
     def update(self, *args, **kwargs):
         with self:  # Suspend save until all updates are complete
