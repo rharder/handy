@@ -8,6 +8,8 @@ from datetime import timedelta
 from pathlib import Path
 from unittest import TestCase
 
+from nacl.exceptions import CryptoError
+
 from handy.cacheable import Cacheable
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
@@ -20,7 +22,6 @@ class TestCacheable(TestCase):
 
         # Test with file cache
         cache = Cacheable(filename, default_expiration=timedelta(milliseconds=100))
-        # cache = Cacheable(default_expiration=timedelta(milliseconds=100))
 
         # Test default expire
         cache.set("a", "alpha")
@@ -161,6 +162,7 @@ class TestCacheable(TestCase):
         self.assertEqual("one", cache["1"])  # Keys are converted to strings so this is OK
 
         cache2 = Cacheable(filename="deleteme-cacheable-test_alternate_keys.db")
+        x = list(cache2)
         self.assertEqual(["1"], list(cache2))  # It's a string once it's been saved to disk
 
     def test_length(self):
@@ -168,7 +170,7 @@ class TestCacheable(TestCase):
         cache["a"] = "alpha"  # Save at least one value
 
         cache2 = Cacheable("deleteme-cacheable-test.db")
-        self.assertEqual(0, len(cache2.data))  # In-memory is blank
+        self.assertEqual(0, len(cache2.data["data"]))  # In-memory is blank
         self.assertGreater(len(cache2), 0)  # But from disk we have something
 
         length = len(cache2)  # But we'll load from disk
@@ -195,3 +197,63 @@ class TestCacheable(TestCase):
         self.assertIn("sub.sublevel", cache)
         self.assertNotIn("sub.sublevel", sub)
         self.assertIn("sublevel", sub)
+
+    def test_encryption(self):
+        cache = Cacheable("deleteme-cacheable-encryption-test.db",
+                          password="foobar", kdf_quality="low")
+        cache2 = Cacheable("deleteme-cacheable-encryption-test.db",
+                           password="foobar", kdf_quality="low")
+        cache3 = Cacheable("deleteme-cacheable-encryption-test.db")
+
+        print(cache)
+        print(cache2)
+        print(cache3)
+        cache["a"] = "alpha"
+        self.assertEqual("alpha", cache2["a"])
+        d = {"Dictionary": "Of Items"}
+        cache["d"] = d
+        self.assertEqual(d, cache2["d"])
+        self.assertEqual(cache.get("d"), cache2.get("d"))
+        with self.assertRaises(CryptoError):
+            cache2.get("d", password="wrong password")
+        nonsense = cache3["a"]
+        self.assertNotEqual("alpha", nonsense)
+
+        cache.set(key="diffpass", value="Using a different password", password="something else")
+        with self.assertRaises(CryptoError):
+            cache.get("diffpass")
+        self.assertEqual("Using a different password",
+                         cache2.get("diffpass", password="something else"))
+
+        # Subcache has same password
+        subcache1 = cache.sub_cache(prefix="sub1")
+        self.assertNotIn("a", subcache1)
+        subcache1["s1"] = "this should be in subcache1"
+        self.assertEqual("this should be in subcache1", subcache1["s1"])
+        self.assertNotIn("s1", cache)
+
+        # Sub cache has different password
+        subcache2 = subcache1.sub_cache(prefix="sub2", password="sub2password")
+        subcache2["s2"] = "only in sub2"
+        self.assertIn("s2", subcache2)
+        self.assertNotIn("s2", subcache1)
+        self.assertNotIn("s2", cache)
+        self.assertEqual("only in sub2", subcache2["s2"])
+        with self.assertRaises(CryptoError):
+            _ = subcache2.get("s2", password="foobar")
+
+        # Per-item password
+        subcache3 = subcache1.sub_cache(prefix="sub3", password="sub3password")
+        subcache3.set("s3", value="I am in s3", password="per-item-pass")
+        self.assertIn("s3", subcache3)
+        self.assertNotIn("s3", cache)
+        self.assertNotIn("s3", subcache1)
+        self.assertNotIn("s3", subcache2)
+        with self.assertRaises(CryptoError):
+            _ = subcache3.get("s3", password="wrong password")
+
+
+        cache4 = Cacheable("deleteme-cacheable-encryption-test.db",
+                           password="foobar", kdf_quality="high")
+        with self.assertRaises(CryptoError):
+            _ = cache4["a"]
