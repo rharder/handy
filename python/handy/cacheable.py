@@ -257,9 +257,14 @@ class Cacheable(UserDict[str, V]):
         if password or self.symmetric_key:
             _encr_key = self._prepare_password(password) if password is not None else self.symmetric_key
             _encr_box = nacl.secret.SecretBox(_encr_key)
-            _decr_value = _encr_box.decrypt(return_value)
-            _unpickled_value = pickle.loads(_decr_value)
-            return _unpickled_value
+            try:
+                _decr_value = _encr_box.decrypt(return_value)
+            except nacl.exceptions.CryptoError as ex:
+                # No problem, just return the default
+                return default
+            else:
+                _unpickled_value = pickle.loads(_decr_value)
+                return _unpickled_value
 
         return return_value
 
