@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import logging
+import shelve
 import sys
 import time
 import uuid
 from datetime import timedelta
 from pathlib import Path
+from pprint import pprint
 from unittest import TestCase
 
+import nacl, nacl.pwhash
 from nacl.exceptions import CryptoError
 
 from handy.cacheable import Cacheable
@@ -200,15 +203,18 @@ class TestCacheable(TestCase):
 
     def test_encryption(self):
         cache = Cacheable("deleteme-cacheable-encryption-test.db",
-                          password="foobar", kdf_quality="low")
+                          password="foobar",
+                          kdf_quality="low")
         cache2 = Cacheable("deleteme-cacheable-encryption-test.db",
-                           password="foobar", kdf_quality="low")
+                           password="foobar",
+                           kdf_quality="low")
         cache3 = Cacheable("deleteme-cacheable-encryption-test.db")
 
-        print(cache)
-        print(cache2)
-        print(cache3)
+        # print(cache)
+        # print(cache2)
+        # print(cache3)
         cache["a"] = "alpha"
+        self.assertEqual("alpha", cache["a"])
         self.assertEqual("alpha", cache2["a"])
         d = {"Dictionary": "Of Items"}
         cache["d"] = d
@@ -250,13 +256,34 @@ class TestCacheable(TestCase):
         self.assertNotIn("s3", cache)
         self.assertNotIn("s3", subcache1)
         self.assertNotIn("s3", subcache2)
-        # with self.assertRaises(CryptoError):
-        #     _ = subcache3.get("s3", password="wrong password")
-        self.assertIsNone(subcache3.get("s3",password="wrong password"))
-
-    def test_cross_encrypt_strengths(self):
-
-        cache4 = Cacheable("deleteme-cacheable-encryption-test.db",
-                           password="foobar", kdf_quality="high")
         with self.assertRaises(CryptoError):
-            _ = cache4["a"]
+            _ = subcache3.get("s3", password="wrong password")
+        # self.assertIsNone(subcache3.get("s3",password="wrong password"))
+
+    def test_key_cache(self):
+        cache = Cacheable(password="monkey123")
+        cache["a"] = "alpha"
+        self.assertEqual("alpha", cache["a"])
+        self.assertEqual("alpha", cache["a"])
+        self.assertEqual("alpha", cache["a"])
+        self.assertEqual("alpha", cache["a"])
+        self.assertEqual("alpha", cache["a"])
+
+    def test_mixed_encryption(self):
+
+        # Cache is not password protected, but a single item is.
+        cache5 = Cacheable("deleteme-cacheable-encryption-test2")
+        cache5["nopassword"] = "hello world"
+        self.assertEqual("hello world", cache5.get_cacheable_item("nopassword").value)
+        cache5.set("password", "secret message", password="monkey123")
+        self.assertNotEqual("secret message", cache5.get_cacheable_item("password").value)
+        self.assertEqual("secret message", cache5.get("password", password="monkey123"))
+        with shelve.open("deleteme-cacheable-encryption-test2") as db:
+            pprint(dict(db))
+
+    # def test_cross_encrypt_strengths(self):
+    #
+    #     cache4 = Cacheable("deleteme-cacheable-encryption-test.db",
+    #                        password="foobar", kdf_quality="high")
+    #     with self.assertRaises(CryptoError):
+    #         _ = cache4["a"]
