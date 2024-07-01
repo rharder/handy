@@ -118,7 +118,7 @@ class Cacheable(UserDict[str, V]):
         Save the result in a cache so subsequent lookups are instant."""
         if salt in self.__kdf_hash_cache and password in self.__kdf_hash_cache[salt]:
             key = self.__kdf_hash_cache[salt][password]
-            print(f"Using cached key {self.hex(key)} for salt={self.hex(salt)}, password={self.hex(password)}")
+            # print(f"Using cached key {self.hex(key)} for salt={self.hex(salt)}, password={self.hex(password)}")
             return key
 
         # Convert password to bytes
@@ -130,13 +130,13 @@ class Cacheable(UserDict[str, V]):
             password_bytes = pickle.dumps(password)
 
         # Run the KDF function, could take a while
-        print(f"Mixing '{self.hex(password)}' with salt '{self.hex(salt)}...' ", end="", flush=True)
+        # print(f"Mixing '{self.hex(password)}' with salt '{self.hex(salt)}...' ", end="", flush=True)
         prepared_password = nacl.pwhash.argon2i.kdf(
             size=nacl.secret.SecretBox.KEY_SIZE,
             password=password_bytes,
             salt=salt,
             opslimit=self.ops_limit, memlimit=self.mem_limit)
-        print(f"Done: {self.hex(prepared_password)}")
+        # print(f"Done: {self.hex(prepared_password)}")
         self.__kdf_hash_cache[salt][password] = prepared_password
         return prepared_password
 
@@ -403,5 +403,5 @@ class Cacheable(UserDict[str, V]):
         if password is None and self.__cache_level_key is not None:
             subcache.__cache_level_key = self.__cache_level_key
         subcache.__kdf_hash_cache = self.__kdf_hash_cache  # Share the KDF cache
-        print(f"Subcache {prefix} salt={subcache.__salt}")
+        # print(f"Subcache {prefix} salt={subcache.__salt}")
         return subcache
