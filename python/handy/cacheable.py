@@ -48,7 +48,7 @@ class CacheableItem(Generic[V]):
     @property
     def expired(self) -> bool:
         try:
-            if self.expiration == Cacheable.NONEXPIRING:
+            if self.expiration == Cacheable.NON_EXPIRING:
                 return False
             else:
                 return self.age > self.expiration
@@ -61,7 +61,7 @@ class Cacheable(UserDict[str, V]):
 
     """
     DEFAULT_EXPIRATION_VAL = timedelta(hours=1)
-    NONEXPIRING = timedelta()  # A zero timeout means non-expiring
+    NON_EXPIRING = timedelta()  # A zero timeout means non-expiring
     KDF_OPS_LIMIT_LOW = 3
     KDF_MEM_LIMIT_LOW = 8192
 

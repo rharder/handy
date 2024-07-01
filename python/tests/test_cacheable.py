@@ -49,7 +49,7 @@ class TestCacheable(TestCase):
         self.assertEqual("foo", cache.get("d", "foo"))
 
         # Test non-expiring
-        cache.set("nonexp", "nonexpring", expiration=cache.NONEXPIRING)
+        cache.set("nonexp", "nonexpring", expiration=cache.NON_EXPIRING)
         time.sleep(2)
         self.assertEqual(cache.get("nonexp"), "nonexpring")
 
