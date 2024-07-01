@@ -305,19 +305,23 @@ class Cacheable(UserDict[str, V]):
         # Decrypt and return non-expired value
         return_value = item.value
         if password or self.__cache_level_key:
-            # 1: Cache-level key (or salt alone if there was no cache-level password)
-            # 2: Mix cache-level key with per-item salt
-            # 3: Mix with per-item password if there is one
-            _encr_key = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
-            _encr_key = self.hash_with_salt(_encr_key, item.salt)
-            _encr_key = self.hash_with_salt(password, _encr_key[:nacl.pwhash.argon2i.SALTBYTES]) \
-                if password is not None else _encr_key
+            try:
+                # 1: Cache-level key (or salt alone if there was no cache-level password)
+                # 2: Mix cache-level key with per-item salt
+                # 3: Mix with per-item password if there is one
+                _encr_key = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
+                _encr_key = self.hash_with_salt(_encr_key, item.salt)
+                _encr_key = self.hash_with_salt(password, _encr_key[:nacl.pwhash.argon2i.SALTBYTES]) \
+                    if password is not None else _encr_key
 
-            # _encr_key = self.__key_from_password(password) if password is not None else self.__cache_level_key
-            _encr_box = nacl.secret.SecretBox(_encr_key)
-            _decr_value = _encr_box.decrypt(return_value)
-            _unpickled_value = pickle.loads(_decr_value)
-            return _unpickled_value
+                # _encr_key = self.__key_from_password(password) if password is not None else self.__cache_level_key
+                _encr_box = nacl.secret.SecretBox(_encr_key)
+                _decr_value = _encr_box.decrypt(return_value)
+                _unpickled_value = pickle.loads(_decr_value)
+                return _unpickled_value
+            except nacl.exceptions.CryptoError as ex:
+                logger.warning(f"Error decrypting key={key}: {type(ex).__name__}({ex})")
+                return None
 
         return return_value
 
