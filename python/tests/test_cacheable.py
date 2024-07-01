@@ -227,9 +227,9 @@ class TestCacheable(TestCase):
         self.assertNotEqual("alpha", nonsense)
 
         cache.set(key="diffpass", value="Using a different password", password="something else")
-        with self.assertRaises(CryptoError):
-            # cache.get("diffpass")
-            _ = cache["diffpass"]
+        # with self.assertRaises(CryptoError):
+        #     _ = cache["diffpass"]
+        self.assertIsNone(cache["diffpass"])
         self.assertEqual("Using a different password",
                          cache2.get("diffpass", password="something else"))
 
@@ -259,7 +259,7 @@ class TestCacheable(TestCase):
         self.assertNotIn("s3", subcache2)
         # with self.assertRaises(CryptoError):
         #     _ = subcache3.get("s3", password="wrong password")
-        self.assertIsNone(subcache3.get("s3",password="wrong password"))
+        self.assertIsNone(subcache3.get("s3", password="wrong password"))
 
     def test_key_cache(self):
         cache = Cacheable(password="monkey123")

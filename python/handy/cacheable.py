@@ -343,12 +343,16 @@ class Cacheable(UserDict[str, V]):
         # Decrypt and return non-expired value
         return_value = item.value
         if self.__cache_level_key:
-            _encr_key = self.__cache_level_key
-            _encr_key = self.hash_with_salt(_encr_key, item.salt)
-            _encr_box = nacl.secret.SecretBox(_encr_key)
-            _decr_value = _encr_box.decrypt(return_value)
-            _unpickled_value = pickle.loads(_decr_value)
-            return _unpickled_value
+            try:
+                _encr_key = self.__cache_level_key
+                _encr_key = self.hash_with_salt(_encr_key, item.salt)
+                _encr_box = nacl.secret.SecretBox(_encr_key)
+                _decr_value = _encr_box.decrypt(return_value)
+                _unpickled_value = pickle.loads(_decr_value)
+                return _unpickled_value
+            except nacl.exceptions.CryptoError as ex:
+                logger.warning(f"Error decrypting key={key}: {type(ex).__name__}({ex})")
+                return None
 
         return return_value
 
