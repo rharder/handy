@@ -11,6 +11,7 @@ All keys will be converted to strings.
 """
 import logging
 import pickle
+# import shelve
 import uuid
 from collections import UserDict, defaultdict
 from datetime import datetime, timedelta
@@ -28,6 +29,7 @@ __author__ = "Robert Harder"
 from sqlitedict import SqliteDict
 
 logger = logging.getLogger(__name__)
+# CacheableItem = namedtuple("CacheableItem", "value createdAt expiration")
 
 V = TypeVar("V")
 
@@ -288,8 +290,8 @@ class Cacheable(UserDict[str, V]):
 
         # Step 4: Else check if it actually is expired
         if item.expired:
-            # msg = f"Cache expired for {_key}"
-            # logger.debug(msg)
+            msg = f"Cache expired for {_key}"
+            logger.debug(msg)
             if "data" in self.data and _key in self.data["data"]:
                 del self.data["data"][_key]  # Delete from memory
             if self.filename:
@@ -386,6 +388,7 @@ class Cacheable(UserDict[str, V]):
                     # Do we want to in-line save the default value for next time
                     db[_key] = default
                     self.data["meta"][_key] = default
+
 
         # Step 2: If not there, do __missing__ or raise KeyError
         return item if item is not None else default
