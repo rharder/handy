@@ -8,7 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from unittest import TestCase
 
-from mitrecollect.cacheable import Cacheable, CacheableItem
+from handy.cacheable import Cacheable
 
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
