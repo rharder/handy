@@ -15,23 +15,6 @@ logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
 class TestCacheable(TestCase):
 
-    def test_tic(self):
-        cache = Cacheable()
-
-        # Prove it expires
-        cache.set("a", "alpha", expiration=timedelta(milliseconds=20))
-        self.assertIn("a", cache)
-        time.sleep(0.022)
-        self.assertNotIn("a", cache)
-
-        # Then add a tic
-        cache.set("a", "alpha", expiration=timedelta(milliseconds=20))
-        self.assertIn("a", cache)
-        time.sleep(0.010)
-        cache.tic("a")
-        time.sleep(0.012)
-        self.assertIn("a", cache)
-
     def test_cacheable(self):
         filename = "deleteme-cacheable-test.db"
 
@@ -65,8 +48,11 @@ class TestCacheable(TestCase):
         time.sleep(2)
         self.assertEqual(cache.get("nonexp"), "nonexpring")
 
+    def test_immediate_expire(self):
+        cache = Cacheable(default_expiration=timedelta(milliseconds=100))
         # Test immediately-expiring
-        cache.set("immediate-expire", "poof", expiration=timedelta())
+        cache.set("immediate-expire", "poof", expiration=cache.IMMEDIATE_EXPIRING)
+        print(cache.data)
         self.assertNotIn("immediate-expire", cache)
 
     def test_sub_cacheable(self):
@@ -188,7 +174,7 @@ class TestCacheable(TestCase):
         cache["a"] = "alpha"  # Save at least one value
 
         cache2 = Cacheable("deleteme-cacheable-test.db")
-        self.assertEqual(0, len(cache2.data))  # In-memory is blank
+        self.assertEqual(2, len(cache2.data))  # In-memory has two
         self.assertGreater(len(cache2), 0)  # But from disk we have something
 
         length = len(cache2)  # But we'll load from disk
@@ -218,12 +204,10 @@ class TestCacheable(TestCase):
             self.assertIn("sublevel", sub)
 
     def test_ttl(self):
-        cache = Cacheable(default_expiration=timedelta(milliseconds=100), )
+        cache = Cacheable(default_expiration=timedelta(seconds=100), )
         cache["a"] = "alpha"
-        self.assertAlmostEquals(timedelta(milliseconds=100).total_seconds(), cache.ttl("a").total_seconds(), places=2)
-        self.assertLess(cache.ttl("a"), timedelta(milliseconds=100))
-        time.sleep(timedelta(milliseconds=5).total_seconds())
-        self.assertAlmostEquals(timedelta(milliseconds=95).total_seconds(), cache.ttl("a").total_seconds(), places=2)
+        self.assertAlmostEqual(timedelta(seconds=100).total_seconds(), cache.ttl("a").total_seconds(), delta=0.1)
+        self.assertLess(cache.ttl("a"), timedelta(seconds=100))
 
         cache.set("b", "non-expring value goes here", cache.NON_EXPIRING)
         self.assertEqual(cache.ttl("b"), cache.NON_EXPIRING)

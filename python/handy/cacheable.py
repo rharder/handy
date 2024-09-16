@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-A file-cacheable Dict-like structure using Python's shelve.
+A file-cacheable Dict-like structure using sqlite for backend storage.
 Supports expiration of cached entries down to the per-key level.
 Supports creating sub-cache objects that are part of the root file store.
 Sub-caches are based on a key hieararchy that creates compounds strings
-(since all cache items need a flat key/value structure for Python's shelve).
 
 All keys will be converted to strings.
 """
@@ -56,6 +55,14 @@ class CacheableItem(Generic[V]):
         except AttributeError:
             return True
 
+    @property
+    def expiration_date(self) -> datetime:
+        return self.created_at + self.expiration
+
+    @property
+    def ttl(self) -> timedelta:
+        return self.expiration_date - datetime.now()
+
 
 class Cacheable(UserDict[str, V]):
     """
@@ -63,6 +70,7 @@ class Cacheable(UserDict[str, V]):
     """
     DEFAULT_EXPIRATION_VAL = timedelta(hours=1)
     NON_EXPIRING = timedelta()  # A zero timeout means non-expiring
+    IMMEDIATE_EXPIRING = timedelta(seconds=-1)  # A negative value implies immediate expiration
     KDF_OPS_LIMIT_LOW = 3
     KDF_MEM_LIMIT_LOW = 8192
 
@@ -165,7 +173,6 @@ class Cacheable(UserDict[str, V]):
         keys = set(self.data["data"].keys())
         if self.filename:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
-                # with shelve.open(self.filename) as db:
                 keys.update(db.keys())
 
         # Step 2: Filter out keys that don't have correct prefix
@@ -194,7 +201,6 @@ class Cacheable(UserDict[str, V]):
         except KeyError:
             ...
         if self.filename:
-            # with shelve.open(self.filename, writeback=True) as db:
             with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
                 try:
                     del db[_key]
@@ -205,19 +211,24 @@ class Cacheable(UserDict[str, V]):
         return len(list(iter(self)))
 
     def __contains__(self, key: Any) -> bool:
+        """Tests if key is stored and returns false if it's not or if it's expired."""
         _key = self._keytransform(key)
 
         # Step 1: Retrieve value
         item: Optional[CacheableItem] = None
-        if _key in self.data["data"]:
-            return True  # Contains the key
+        if "data" in self.data and _key in self.data["data"]:
+            item = self.data["data"][_key]
+            return not item.expired
+
         elif self.filename:
-            # with shelve.open(self.filename) as db:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
-                    self.data["data"][_key] = item  # Save to in-memory as well
-                    return True
+                    if item.expired:
+                        return False
+                    else:
+                        self.data["data"][_key] = item  # Save to in-memory as well
+                        return True
         return False
 
     def set(self,
@@ -260,7 +271,6 @@ class Cacheable(UserDict[str, V]):
         # Step 3: Save the item both in the in-memory 'data' field and the file cache
         self.data["data"][_key] = item
         if self.filename:
-            # with shelve.open(self.filename, writeback=True) as db:
             with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
                 db[_key] = item
 
@@ -276,7 +286,6 @@ class Cacheable(UserDict[str, V]):
         if _key in self.data["data"]:
             item = self.data["data"][_key]
         elif self.filename:
-            # with shelve.open(self.filename) as db:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
@@ -294,7 +303,6 @@ class Cacheable(UserDict[str, V]):
                 del self.data["data"][_key]  # Delete from memory
             if self.filename:
                 with SqliteDict(self.filename, tablename=self.data_tablename, autocommit=True) as db:
-                    # with shelve.open(self.filename, writeback=True) as db:
                     if _key in db:
                         del db[_key]  # Delete from file cache
             return None
@@ -378,7 +386,6 @@ class Cacheable(UserDict[str, V]):
             item = self.data["meta"][_key]
         elif self.filename:
             with SqliteDict(self.filename, tablename=self.meta_tablename, autocommit=True) as db:
-                # with shelve.open(self.filename, writeback=save_default) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["meta"][_key] = item  # Save to in-memory as well
@@ -395,7 +402,6 @@ class Cacheable(UserDict[str, V]):
         self.data["meta"][_key] = value
         if self.filename:
             with SqliteDict(self.filename, tablename=self.meta_tablename, autocommit=True) as db:
-                # with shelve.open(self.filename, writeback=True) as db:
                 db[_key] = value
 
     def sub_cache(self,
@@ -422,3 +428,11 @@ class Cacheable(UserDict[str, V]):
         subcache.__kdf_hash_cache = self.__kdf_hash_cache  # Share the KDF cache
         # print(f"Subcache {prefix} salt={subcache.__salt}")
         return subcache
+
+    def ttl(self, key: Any) -> timedelta:
+        item = self.get_cacheable_item(key)
+        if item:
+            if item.expiration == Cacheable.NON_EXPIRING:
+                return item.expiration
+            else:
+                return item.ttl
