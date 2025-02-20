@@ -21,10 +21,9 @@ import nacl.exceptions
 import nacl.pwhash
 import nacl.secret
 import nacl.utils
+from sqlitedict import SqliteDict
 
 __author__ = "Robert Harder"
-
-from sqlitedict import SqliteDict
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +34,21 @@ class CacheableItem(Generic[V]):
     def __init__(self, value: V = None, expiration: timedelta = None):
         self.value: V = value
         self.created_at: datetime = datetime.now()
+        self.last_tic: datetime = self.created_at
         self.expiration: timedelta = expiration
         self.salt: bytes = nacl.utils.random(nacl.pwhash.argon2i.SALTBYTES)
 
     def __repr__(self):
-        return f"CacheableItem({self.value!r}, {self.created_at!r}, {self.expiration!r}, {self.salt.hex()!r})"
+        return (f"CacheableItem({self.value!r}, {self.created_at!r}, "
+                f"{self.last_tic!r}, {self.expiration!r}, {self.salt.hex()!r})")
 
     @property
-    def age(self) -> timedelta:
+    def age_created_at(self) -> timedelta:
         return datetime.now() - self.created_at
+
+    @property
+    def age_last_tic(self) -> timedelta:
+        return datetime.now() - self.last_tic
 
     @property
     def expired(self) -> bool:
@@ -51,17 +56,21 @@ class CacheableItem(Generic[V]):
             if self.expiration == Cacheable.NON_EXPIRING:
                 return False
             else:
-                return self.age > self.expiration
+                return self.age_last_tic > self.expiration
         except AttributeError:
             return True
 
     @property
     def expiration_date(self) -> datetime:
-        return self.created_at + self.expiration
+        return self.last_tic + self.expiration
 
     @property
     def ttl(self) -> timedelta:
         return self.expiration_date - datetime.now()
+
+    def tic(self):
+        """Updates the 'tic' datetime to now() thereby resetting the expiration date to now() + expiration."""
+        self.last_tic = datetime.now()
 
 
 class Cacheable(UserDict[str, V]):
@@ -83,16 +92,18 @@ class Cacheable(UserDict[str, V]):
                  kdf_quality: Literal["high", "medium", "low"] = "low",
                  kdf_ops_limit: int = None,
                  kdf_mem_limit: int = None,
+                 parent: "Cacheable" = None,
                  ):
         super().__init__()
-        self.filename: Optional[str] = str(filename) if filename else None
+        self.parent: Cacheable = parent
+        self._filename: Optional[str] = str(filename) if filename else None
         self.default_expiration: Optional[timedelta] = default_expiration \
             if default_expiration is not None else self.DEFAULT_EXPIRATION_VAL
-        self.prefix: Optional[str] = prefix or ""
-        if data_backing is not None:
+        self.prefix: Optional[str] = prefix
+        if data_backing is not None:  # I don't remember what I thought this data_backing thing is
             self.data = data_backing
 
-        # Data backing is broken in data and meta elements
+        # Data backing is broken in data and meta elements (?)
         if "data" not in self.data:
             self.data["data"] = {}
         if "meta" not in self.data:
@@ -115,36 +126,74 @@ class Cacheable(UserDict[str, V]):
         if kdf_mem_limit is not None:
             self.mem_limit: int = kdf_mem_limit
 
+        self.__cache_level_key: Optional[bytes] = None
         self.__salt: bytes = self.get_meta(
             key="__SALT__",
             default=nacl.utils.random(nacl.pwhash.argon2i.SALTBYTES),
-            save_default=True)
+            save_default=True)  # if password is not None else None
         # If a default password was provided, don't store it in memory - instead store the key
-        self.__cache_level_key = self.hash_with_salt(password, self.__salt) if password is not None else None
+        self.__cache_level_key = self.hash_with_salt(password, self.__salt) \
+            if password is not None else None
+
+    def __str__(self):
+        return (f"Cacheable(filename={self.filename!r}, "
+                f"prefix={self.prefix!r}, "
+                f"default_expiration={self.default_expiration!r},"
+                f"password={'<REDACTED>' if self.__cache_level_key else 'NOT SET'})")
+
+    @property
+    def filename(self) -> str:
+        if self._filename:
+            return self._filename
+        elif self.parent:
+            return self.parent.filename
+
+    @filename.setter
+    def filename(self, filename: Union[str, bytes, PathLike]):
+
+        # Step 1: if we're changing filenames, read the whole thing into memory
+        if self._filename and self._filename != filename:
+            try:
+                with SqliteDict(self._filename, tablename=self.data_tablename) as db:
+                    self.data.update(db)
+                    logger.debug(f"Changing filenames, reading all data from old file {self._filename!r}")
+            except Exception as ex:
+                logger.warning(f"Could not read previous data when changing "
+                               f"filenames from {self._filename!r} to {filename!r}: {ex}")
+
+        # Step 2: Save the new filename
+        self._filename = str(filename)
+
+        # Step 3: Write everything to disk
+        with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+            db.update(self.data)
 
     @property
     def data_tablename(self):
+        # return f"data-{self._prefixtransform(self.prefix)}"
         return f"data-{self.prefix}"
 
     @property
     def meta_tablename(self):
+        # return f"meta-{self._prefixtransform(self.prefix)}"
         return f"meta-{self.prefix}"
 
-    def hash_with_salt(self, password: Any, salt: bytes) -> bytes:
-        """Hash a password with the salt and return the secret key.
+    def hash_with_salt(self, value: Any, salt: bytes) -> bytes:
+        """Hash a value with the salt and returns the hashed value.
+
         Save the result in a cache so subsequent lookups are instant."""
-        if salt in self.__kdf_hash_cache and password in self.__kdf_hash_cache[salt]:
-            key = self.__kdf_hash_cache[salt][password]
+        if salt in self.__kdf_hash_cache and value in self.__kdf_hash_cache[salt]:
+            key = self.__kdf_hash_cache[salt][value]
             # print(f"Using cached key {self.hex(key)} for salt={self.hex(salt)}, password={self.hex(password)}")
             return key
 
         # Convert password to bytes
-        if isinstance(password, str):
-            password_bytes = password.encode("utf-8")
-        elif isinstance(password, bytes):
-            password_bytes = password
+        if isinstance(value, str):
+            password_bytes = value.encode("utf-8")
+        elif isinstance(value, bytes):
+            password_bytes = value
         else:
-            password_bytes = pickle.dumps(password)
+            password_bytes = pickle.dumps(value)
 
         # Run the KDF function, could take a while
         # print(f"Mixing '{self.hex(password)}' with salt '{self.hex(salt)}...' ", end="", flush=True)
@@ -154,7 +203,7 @@ class Cacheable(UserDict[str, V]):
             salt=salt,
             opslimit=self.ops_limit, memlimit=self.mem_limit)
         # print(f"Done: {self.hex(prepared_password)}")
-        self.__kdf_hash_cache[salt][password] = prepared_password
+        self.__kdf_hash_cache[salt][value] = prepared_password
         return prepared_password
 
     @staticmethod
@@ -164,9 +213,47 @@ class Cacheable(UserDict[str, V]):
         else:
             return str(value)[:length]
 
-    def _keytransform(self, key: Any) -> str:
+    def _keytransform(self, key: Any, password: Any = None) -> str:
         """Takes a key for the cache and prepares it by setting up namespace for subcaches and converting to string."""
-        return f"{self.prefix}.{key}" if self.prefix else str(key)
+        return_value = f"{self.prefix}.{key}" if self.prefix else str(key)
+
+        # If the cache or the key is also protected, we need to encrypt/decrypt the key
+        # But in the constructor, when the __SALT__ value is being retrieved, we don't
+        if password is not None or self.__cache_level_key is not None:
+            # 1: Cache-level key
+            # 2: Mix with per-item password if there is one
+            _build_salt = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
+            _build_salt = self.hash_with_salt(password, _build_salt[:nacl.pwhash.argon2i.SALTBYTES]) \
+                if password is not None else _build_salt
+            _encr_value = self.hash_with_salt(return_value, _build_salt[:nacl.pwhash.argon2i.SALTBYTES])
+            return_value = _encr_value.hex()
+
+        return return_value
+
+    def _prefixtransform(self, prefix: Any, password: Any = None) -> str:
+        """Takes a key for the cache and prepares it by setting up namespace for subcaches and converting to string."""
+        return_value = prefix or ""
+
+        # If the cache or the key is also protected, we need to encrypt/decrypt the key
+        # But in the constructor, when the __SALT__ value is being retrieved, we don't
+        if password is not None or self.__cache_level_key is not None:
+            # 1: Cache-level key
+            # 2: Mix with per-item password if there is one
+            _build_salt = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
+            _build_salt = self.hash_with_salt(password, _build_salt[:nacl.pwhash.argon2i.SALTBYTES]) \
+                if password is not None else _build_salt
+            _encr_value = self.hash_with_salt(return_value, _build_salt[:nacl.pwhash.argon2i.SALTBYTES])
+            return_value = _encr_value.hex()
+
+        return return_value
+
+    # def _salt_and_hash(self, val: Any, password: Any = None)->bytes:
+    #     # 1: Cache-level key
+    #     # 2: Mix with per-item password if there is one
+    #     _build_salt = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
+    #     _build_salt = self.hash_with_salt(password, _build_salt[:nacl.pwhash.argon2i.SALTBYTES]) \
+    #         if password is not None else _build_salt
+    #     return self.hash_with_salt(val, _build_salt[:nacl.pwhash.argon2i.SALTBYTES])
 
     def __iter__(self):
         # Step 1: Combine iters from in-memory and disk
@@ -270,16 +357,27 @@ class Cacheable(UserDict[str, V]):
 
         # Step 3: Save the item both in the in-memory 'data' field and the file cache
         self.data["data"][_key] = item
+        # self.__save(key=_key,item=item)
         if self.filename:
             with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
                 db[_key] = item
 
-    def get_cacheable_item(self, key: any) -> Optional[CacheableItem]:
+    # def __save(self, key:str, item:CacheableItem):
+    #     if self.parent:
+    #         return self.parent.__save(key=key, item=item)
+    #     elif self.filename:
+    #         with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
+    #             db[key] = item
+
+    def get_cacheable_item(self, key: any,
+                           ignore_expiration: bool = None,
+                           password: Any = None
+                           ) -> Optional[CacheableItem]:
         """Returns the CachableItem corresponding to the given key
         This does not attempt to decrypt the item, if it's encrypted.
         Does not raise an exception - returns None if not present or expired.
         """
-        _key = self._keytransform(key)
+        _key = self._keytransform(key, password=password)
 
         # Step 1: Retrieve value
         item: Optional[CacheableItem] = None
@@ -291,12 +389,12 @@ class Cacheable(UserDict[str, V]):
                     item = db[_key]
                     self.data["data"][_key] = item  # Cache to in-memory as well
 
-        # Step 2: If not there, do __missing__ or raise KeyError
+        # Step 2: If not there, return None
         if item is None:
             return None
 
         # Step 4: Else check if it actually is expired
-        if item.expired:
+        if not ignore_expiration and item.expired:
             # msg = f"Cache expired for {_key}"
             # logger.debug(msg)
             if "data" in self.data and _key in self.data["data"]:
@@ -306,7 +404,6 @@ class Cacheable(UserDict[str, V]):
                     if _key in db:
                         del db[_key]  # Delete from file cache
             return None
-            # raise KeyError(msg)
 
         return item
 
@@ -316,7 +413,7 @@ class Cacheable(UserDict[str, V]):
         is returned.
         @raise CryptoError: If the password is wrong.
         """
-        item = self.get_cacheable_item(key)
+        item = self.get_cacheable_item(key, password=password)
         if item is None:
             # Not present or expired
             return default
@@ -332,8 +429,6 @@ class Cacheable(UserDict[str, V]):
                 _encr_key = self.hash_with_salt(_encr_key, item.salt)
                 _encr_key = self.hash_with_salt(password, _encr_key[:nacl.pwhash.argon2i.SALTBYTES]) \
                     if password is not None else _encr_key
-
-                # _encr_key = self.__key_from_password(password) if password is not None else self.__cache_level_key
                 _encr_box = nacl.secret.SecretBox(_encr_key)
                 _decr_value = _encr_box.decrypt(return_value)
                 _unpickled_value = pickle.loads(_decr_value)
@@ -345,13 +440,17 @@ class Cacheable(UserDict[str, V]):
         return return_value
 
     def __getitem__(self, key: Any) -> V:
-        """Returns the item at the given key and raises a KeyError if expired - just as if the key was not found
-        If a password is used for the cache, but a specific password was used for the key, then this will
-        raise a CryptoError when trying to decrypt with the wrong password. If you are using a per-item password,
-        be sure to use the .get() function instead of cache["something"].
+        """Returns the item at the given key and raises a KeyError if expired - just as if the key was not found.
 
-        @raises KeyError: If the key is not found or if it is expired
-        @raises CryptoError: If the password is wrong.
+        If a password is used for the cache, or the specific key, and the wrong password is provided,
+        then a KeyError will also be raised as if the key does not exist.
+
+        This protects from information leakage about what values are in
+        the dictionary when the wrong password is provided.
+
+        If you are using a per-key password, be sure to use the .get(key, password) function since
+        using the bracket notation my_cache['myKey'] does not allow the password parameter to be supplied.
+        @raises KeyError: If the key is not found or if it is expired or if the password is wrong.
         """
         item = self.get_cacheable_item(key)
         if item is None:
@@ -416,17 +515,18 @@ class Cacheable(UserDict[str, V]):
         prefix = prefix or str(uuid.uuid4())
         composite_prefix = f"{self.prefix}.{prefix}" if self.prefix else str(prefix)
         subcache = Cacheable(
-            filename=self.filename,
+            parent=self,
+            # filename=self.filename,
             default_expiration=default_expiration \
                 if default_expiration is not None else self.default_expiration,
             prefix=composite_prefix,
             password=password,
             data_backing=self.data,
-            kdf_quality=self.kdf_quality)
+            kdf_quality=self.kdf_quality,
+        )
         if password is None and self.__cache_level_key is not None:
             subcache.__cache_level_key = self.__cache_level_key
         subcache.__kdf_hash_cache = self.__kdf_hash_cache  # Share the KDF cache
-        # print(f"Subcache {prefix} salt={subcache.__salt}")
         return subcache
 
     def ttl(self, key: Any) -> timedelta:
@@ -436,3 +536,8 @@ class Cacheable(UserDict[str, V]):
                 return item.expiration
             else:
                 return item.ttl
+
+    def tic(self, key: Any):
+        item = self.get_cacheable_item(key, ignore_expiration=True)
+        if item:
+            item.tic()

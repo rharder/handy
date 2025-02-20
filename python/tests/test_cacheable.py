@@ -211,3 +211,17 @@ class TestCacheable(TestCase):
 
         cache.set("b", "non-expring value goes here", cache.NON_EXPIRING)
         self.assertEqual(cache.ttl("b"), cache.NON_EXPIRING)
+
+    def test_tic(self):
+        cache = Cacheable(default_expiration=timedelta(seconds=100), )
+        cache["a"] = "alpha"
+        self.assertAlmostEqual(timedelta(seconds=100).total_seconds(), cache.ttl("a").total_seconds(), delta=0.1)
+        self.assertLess(cache.ttl("a"), timedelta(seconds=100))
+
+        time.sleep(2)
+        self.assertAlmostEqual(timedelta(seconds=98).total_seconds(), cache.ttl("a").total_seconds(), delta=0.1)
+        cache.tic("a")
+        self.assertAlmostEqual(timedelta(seconds=100).total_seconds(), cache.ttl("a").total_seconds(), delta=0.1)
+
+
+
