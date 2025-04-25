@@ -149,7 +149,7 @@ class Cacheable(UserDict[str, V]):
     def filename(self) -> str:
         if self._filename:
             return self._filename
-        elif self.parent:
+        elif self.parent is not None:
             return self.parent.filename
 
     @filename.setter
@@ -432,11 +432,15 @@ class Cacheable(UserDict[str, V]):
         item: Optional[CacheableItem] = None
         if _key in self.data["data"]:
             item = self.data["data"][_key]
+            logger.debug(f"Found key {_key} in-memory: {str(item.value)[:20]}...")
         elif self.filename:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["data"][_key] = item  # Cache to in-memory as well
+                    logger.debug(f"Found key {_key} on-disk: {str(item.value)[:20]}...")
+        else:
+            logger.debug(f"Did not find key {_key} in-memory, and no filename was provided for on-disk storage")
 
         # Step 2: If not there, return None
         if item is None:
@@ -453,9 +457,12 @@ class Cacheable(UserDict[str, V]):
                     if _key in db:
                         del db[_key]  # Delete from file cache
                         logger.debug(f"get_cacheable_item(): Deleted {_key} from sqlite file {self.filename}")
+            else:
+                logger.debug(f"get_cacheable_item(): No filename for prefix={self.prefix!r}")
             return None
 
         return item
+
 
     def get_cacheable_items(self,
                             keys: Iterable[Any],
