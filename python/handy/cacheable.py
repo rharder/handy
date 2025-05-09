@@ -9,6 +9,7 @@ Sub-caches are based on a key hieararchy that creates compounds strings
 All keys will be converted to strings.
 """
 import logging
+import os
 import pickle
 import uuid
 from collections import UserDict, defaultdict
@@ -148,6 +149,9 @@ class Cacheable(UserDict[str, V]):
     @property
     def filename(self) -> str:
         if self._filename:
+            if not os.path.isfile(self._filename):
+                # Try creating parent directories, just in case
+                os.makedirs(os.path.dirname(self._filename), exist_ok=True)
             return self._filename
         elif self.parent is not None:
             return self.parent.filename
@@ -432,15 +436,15 @@ class Cacheable(UserDict[str, V]):
         item: Optional[CacheableItem] = None
         if _key in self.data["data"]:
             item = self.data["data"][_key]
-            logger.debug(f"Found key {_key} in-memory: {str(item.value)[:20]}...")
+            # logger.debug(f"Found key {_key} in-memory: {str(item.value)[:20]}...")
         elif self.filename:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["data"][_key] = item  # Cache to in-memory as well
-                    logger.debug(f"Found key {_key} on-disk: {str(item.value)[:20]}...")
-        else:
-            logger.debug(f"Did not find key {_key} in-memory, and no filename was provided for on-disk storage")
+                    # logger.debug(f"Found key {_key} on-disk: {str(item.value)[:20]}...")
+        # else:
+        #     logger.debug(f"Did not find key {_key} in-memory, and no filename was provided for on-disk storage")
 
         # Step 2: If not there, return None
         if item is None:
@@ -456,13 +460,12 @@ class Cacheable(UserDict[str, V]):
                 with SqliteDict(self.filename, tablename=self.data_tablename, autocommit=True) as db:
                     if _key in db:
                         del db[_key]  # Delete from file cache
-                        logger.debug(f"get_cacheable_item(): Deleted {_key} from sqlite file {self.filename}")
-            else:
-                logger.debug(f"get_cacheable_item(): No filename for prefix={self.prefix!r}")
+                        # logger.debug(f"get_cacheable_item(): Deleted {_key} from sqlite file {self.filename}")
+            # else:
+            #     logger.debug(f"get_cacheable_item(): No filename for prefix={self.prefix!r}")
             return None
 
         return item
-
 
     def get_cacheable_items(self,
                             keys: Iterable[Any],
