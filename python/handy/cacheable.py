@@ -15,6 +15,7 @@ import uuid
 from collections import UserDict, defaultdict
 from datetime import datetime, timedelta
 from os import PathLike
+from pathlib import Path
 from typing import Optional, Union, Any, TypeVar, Dict, Literal, Generic, List, Set, Iterable
 
 import nacl
@@ -101,7 +102,7 @@ class Cacheable(UserDict[str, V]):
                  ):
         super().__init__()
         self.parent: Cacheable = parent
-        self._filename: Optional[str] = str(filename) if filename else None
+        self._filename: Optional[Path] = Path(filename) if filename else None
         self.default_expiration: Optional[timedelta] = default_expiration \
             if default_expiration is not None else self.DEFAULT_EXPIRATION_VAL
         self.prefix: Optional[str] = prefix
@@ -147,11 +148,11 @@ class Cacheable(UserDict[str, V]):
                 f"password={'<REDACTED>' if self.__cache_level_key else 'NOT SET'})")
 
     @property
-    def filename(self) -> str:
+    def filename(self) -> Path:
         if self._filename:
-            if not os.path.isfile(self._filename):
+            if not self._filename.is_file():
                 # Try creating parent directories, just in case
-                os.makedirs(os.path.dirname(self._filename), exist_ok=True)
+                self._filename.parent.mkdir(parents=True, exist_ok=True)
             return self._filename
         elif self.parent is not None:
             return self.parent.filename
@@ -170,7 +171,7 @@ class Cacheable(UserDict[str, V]):
                                f"filenames from {self._filename!r} to {filename!r}: {ex}")
 
         # Step 2: Save the new filename
-        self._filename = str(filename)
+        self._filename = Path(filename)
 
         # Step 3: Write everything to disk
         with SqliteDict(self.filename, tablename=self.data_tablename) as db:
@@ -386,7 +387,7 @@ class Cacheable(UserDict[str, V]):
                     password: Any = None,
                     ) -> None:
         # Step 1: Add the prefix
-        _key = self._keytransform(key)
+        _key = self._keytransform(key, password=password)
 
         item = CacheableItem(value=value,
                              expiration=expiration if expiration is not None else self.default_expiration)
