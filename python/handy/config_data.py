@@ -1,18 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+This class manages the reading of the config YAML file and has some helper methods for working with such a file.
 
+If backed by a config file, the config file is "live" in the sense that as the Python code is running, if the
+config file changes, those changes will be immediately reflected when a key is read from the config data.
+This is done by observing the modification date on the file on the local filesystem and reloading the data
+whenever the modification date is newer than the last time it was read.
+
+If a config file is not provided as a backing, this class will still function by returning no values for whatever
+keys are asked of it.
 """
 import logging
-import traceback
 import warnings
 from collections import UserDict
 from datetime import datetime
 from os import PathLike
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional, Union, Any, Dict, List
 
 import yaml
+from colorama import Fore, Style
+
+_BLUE = Fore.BLUE
+_GREEN = Fore.GREEN
+_RESET = Style.RESET_ALL
+
+__author__ = "Robert Harder"
+__email__ = "rharder@mitre.org"
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +43,8 @@ class ConfigData(UserDict):
         self.config_file: Path = Path(filename) if filename else None
         self.last_read: Optional[datetime] = None
         self._has_been_read: bool = False
-        if not self.from_text and (self.config_file is None or not self.config_file.exists()):
+        self.runtime_overrides: Dict[str, Any] = {}
+        if self.config_file is not None and not self.config_file.exists():
             logger.warning(f"{self.__class__.__name__} config file does not exist: {self.config_file}")
         else:
             self._ensure_loaded()
@@ -36,9 +52,11 @@ class ConfigData(UserDict):
     def __getitem__(self, key: str) -> Any:
         """Returns the item at the given key/key path and throws a key error if the key is not found.
         The returning of a default value is handled by the function that calls this one."""
+        if key in self.runtime_overrides:
+            return self.runtime_overrides[key]
 
         self._ensure_loaded()
-        parts = Path(key).parts
+        parts = PurePosixPath(key).parts
         data: Union[List, Dict] = self.data
         for part in parts[:-1]:
             if part == "/":
@@ -51,6 +69,50 @@ class ConfigData(UserDict):
 
         elif data is not None:
             return data[parts[-1]]
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def set_runtime_override(self, key: str, value: Any) -> None:
+        self.runtime_overrides[key] = value
+
+    @property
+    def base_directory(self) -> Path:
+        if self.config_file:
+            path = self.config_file.parent.resolve()
+        else:
+            path = Path()
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_filename_relative_to_config_file(self, key: str, make_parents: bool = None) -> Optional[Path]:
+        """Looks up a key in the config and if it can be treated as a filename,
+        returns the filename relative to the config file. Else returns None."""
+        val = self.get(key)
+        path = (self.base_directory / val).resolve()
+
+        if make_parents:
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+        return path
+
+    def get_directory_relative_to_config_file(self, key: str, make_parents: bool = None) -> Optional[Path]:
+        """Looks up a key in the config and if it can be treated as a directory,
+        returns the directory relative to the config file. Else returns None."""
+        val = self.get(key)
+        if not val:
+            return None
+
+        path = (self.base_directory / val).resolve()
+
+        if make_parents:
+            path.mkdir(parents=True, exist_ok=True)
+
+        return path
 
     def get_path(self, path: str, default: Optional[Any] = None) -> Any:
         """Given a path to a resource, this will traverse the path, which may or
