@@ -4,19 +4,18 @@
 A file-cacheable Dict-like structure using sqlite for backend storage.
 Supports expiration of cached entries down to the per-key level.
 Supports creating sub-cache objects that are part of the root file store.
-Sub-caches are based on a key hieararchy that creates compounds strings
+Sub-caches are based on a key hierarchy that creates compounds strings
 
 All keys will be converted to strings.
 """
 import logging
-import os
 import pickle
 import uuid
 from collections import UserDict, defaultdict
 from datetime import datetime, timedelta
 from os import PathLike
 from pathlib import Path
-from typing import Optional, Union, Any, TypeVar, Dict, Literal, Generic, List, Set, Iterable
+from typing import Optional, Union, Any, TypeVar, Dict, Literal, Generic, Set, Iterable
 
 import nacl
 import nacl.exceptions
@@ -59,10 +58,7 @@ class CacheableItem(Generic[V]):
                 return False
             else:
                 if self.age_last_tic > self.expiration:
-                    # logger.debug(f"Cacheable item expired, age={self.age_last_tic}")
-                    # raise Exception("DELETE THIS RAISE LATER _ JUST LOOKING FOR TRACE")
                     return True
-                # return self.age_last_tic > self.expiration
         except AttributeError:
             return True
 
@@ -179,12 +175,10 @@ class Cacheable(UserDict[str, V]):
 
     @property
     def data_tablename(self):
-        # return f"data-{self._prefixtransform(self.prefix)}"
         return f"data-{self.prefix}"
 
     @property
     def meta_tablename(self):
-        # return f"meta-{self._prefixtransform(self.prefix)}"
         return f"meta-{self.prefix}"
 
     def hash_with_salt(self, value: Any, salt: bytes) -> bytes:
@@ -205,13 +199,11 @@ class Cacheable(UserDict[str, V]):
             password_bytes = pickle.dumps(value)
 
         # Run the KDF function, could take a while
-        # print(f"Mixing '{self.hex(password)}' with salt '{self.hex(salt)}...' ", end="", flush=True)
         prepared_password = nacl.pwhash.argon2i.kdf(
             size=nacl.secret.SecretBox.KEY_SIZE,
             password=password_bytes,
             salt=salt,
             opslimit=self.ops_limit, memlimit=self.mem_limit)
-        # print(f"Done: {self.hex(prepared_password)}")
         self.__kdf_hash_cache[salt][value] = prepared_password
         return prepared_password
 
@@ -235,19 +227,6 @@ class Cacheable(UserDict[str, V]):
             _encr_key = self.hash_with_salt(password, _encr_key[:nacl.pwhash.argon2i.SALTBYTES]) \
                 if password is not None else _encr_key
 
-            # _pickled_val = pickle.dumps(return_value)
-            # _encr_box = nacl.secret.SecretBox(_encr_key)
-            # return_value = _encr_box.encrypt(_pickled_val).hex()
-
-            # eb2 = nacl.secret.SecretBox(_encr_key)
-            # rv2 = eb2.encrypt(_pickled_val).hex()
-            # SecretBox has a nonce, so the resulting value is
-            # always different, making it the wrong choice for keys
-            # Except that I want to
-            # print(f"{return_value}\n{rv2}\n")
-
-            # print(f"{key} ->({password}/{self.__cache_level_key}) {return_value}")
-
             _encr_value = self.hash_with_salt(return_value, _encr_key[:nacl.pwhash.argon2i.SALTBYTES])
             return_value = _encr_value.hex()
 
@@ -265,29 +244,16 @@ class Cacheable(UserDict[str, V]):
             _encr_key = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
             _encr_key = self.hash_with_salt(password, _encr_key[:nacl.pwhash.argon2i.SALTBYTES]) \
                 if password is not None else _encr_key
-            # _pickled_val = pickle.dumps(return_value)
-            # _encr_box = nacl.secret.SecretBox(_encr_key)
-            # return_value = _encr_box.encrypt(_pickled_val).hex()
             _encr_value = self.hash_with_salt(return_value, _encr_key[:nacl.pwhash.argon2i.SALTBYTES])
             return_value = _encr_value.hex()
 
         return return_value
 
-    # def _salt_and_hash(self, val: Any, password: Any = None)->bytes:
-    #     # 1: Cache-level key
-    #     # 2: Mix with per-item password if there is one
-    #     _build_salt = self.__cache_level_key if self.__cache_level_key is not None else self.__salt
-    #     _build_salt = self.hash_with_salt(password, _build_salt[:nacl.pwhash.argon2i.SALTBYTES]) \
-    #         if password is not None else _build_salt
-    #     return self.hash_with_salt(val, _build_salt[:nacl.pwhash.argon2i.SALTBYTES])
-
     def __collect_keys(self) -> Set[Any]:
         keys = set(self.data["data"].keys())
-        # logger.debug(f"Found {len(keys):,} keys in self.data[]")
         if self.filename:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 keys.update(db.keys())
-        # logger.debug(f"Found {len(keys):,} keys in self.data[] and {self.filename}")
 
         # Step 2: Filter out keys that don't have correct prefix
         # Example, if prefix=cars then start=cars. and keys will be things like cars.bronco
@@ -301,23 +267,6 @@ class Cacheable(UserDict[str, V]):
 
     def __iter__(self):
         keys = self.__collect_keys()
-        #
-        # # Step 1: Combine iters from in-memory and disk
-        # keys = set(self.data["data"].keys())
-        # if self.filename:
-        #     with SqliteDict(self.filename, tablename=self.data_tablename) as db:
-        #         keys.update(db.keys())
-        #
-        # # If encrypted, we need to decrypt the keys so we can read them
-        # # keys = [self.decrypt_key(k) for k in keys]
-        #
-        # # Step 2: Filter out keys that don't have correct prefix
-        # # Example, if prefix=cars then start=cars. and keys will be things like cars.bronco
-        # start = f"{self.prefix}." if self.prefix else ""
-        # correct_prefix = filter(lambda _k: _k.startswith(start), keys)
-        #
-        # # Step 3: Strip the leading prefix/start string so keys are original value
-        # stripped_keys = iter(x[len(start):] for x in correct_prefix)
 
         # Step 4: We'll check for the key's existence without checking crypto
         final_keys = []
@@ -407,7 +356,6 @@ class Cacheable(UserDict[str, V]):
 
         # Step 3: Save the item both in the in-memory 'data' field and the file cache
         self.data["data"][_key] = item
-        # self.__save(key=_key,item=item)
         if self.filename:
             with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
                 db[_key] = item
@@ -415,11 +363,10 @@ class Cacheable(UserDict[str, V]):
     def trim_expired(self) -> "Cacheable":
         """Trims expired keys and returns self (enabling chaining)"""
         keys = self.__collect_keys()
-        # logger.debug(f"Examining {len(keys):,} keys to look for expired ones...")
+
         # Calling get_cacheable_items with all the keys (and not ignoring expiration)
         # is the same as bulk-deleting expired keys.
-        items = self.get_cacheable_items(keys=keys, ignore_expiration=False)
-        # logger.debug(f"Remaining non-expired items: {len(items):,}")
+        _ = self.get_cacheable_items(keys=keys, ignore_expiration=False)
         return self
 
     def get_cacheable_item(self,
@@ -437,15 +384,11 @@ class Cacheable(UserDict[str, V]):
         item: Optional[CacheableItem] = None
         if _key in self.data["data"]:
             item = self.data["data"][_key]
-            # logger.debug(f"Found key {_key} in-memory: {str(item.value)[:20]}...")
         elif self.filename:
             with SqliteDict(self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["data"][_key] = item  # Cache to in-memory as well
-                    # logger.debug(f"Found key {_key} on-disk: {str(item.value)[:20]}...")
-        # else:
-        #     logger.debug(f"Did not find key {_key} in-memory, and no filename was provided for on-disk storage")
 
         # Step 2: If not there, return None
         if item is None:
@@ -453,17 +396,14 @@ class Cacheable(UserDict[str, V]):
 
         # Step 4: Else check if it actually is expired
         if not ignore_expiration and item.expired:
-            msg = f"Cache expired for {_key}"
-            # logger.debug(msg)
+            # Cache expired for key
             if "data" in self.data and _key in self.data["data"]:
                 del self.data["data"][_key]  # Delete from memory
             if self.filename:
                 with SqliteDict(self.filename, tablename=self.data_tablename, autocommit=True) as db:
                     if _key in db:
                         del db[_key]  # Delete from file cache
-                        # logger.debug(f"get_cacheable_item(): Deleted {_key} from sqlite file {self.filename}")
-            # else:
-            #     logger.debug(f"get_cacheable_item(): No filename for prefix={self.prefix!r}")
+
             return None
 
         return item
