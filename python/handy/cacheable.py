@@ -24,8 +24,6 @@ import nacl.secret
 import nacl.utils
 from sqlitedict import SqliteDict
 
-__author__ = "Robert Harder"
-
 logger = logging.getLogger(__name__)
 
 V = TypeVar("V")
@@ -82,8 +80,6 @@ class Cacheable(UserDict[str, V]):
     DEFAULT_EXPIRATION_VAL = timedelta(hours=1)
     NON_EXPIRING = timedelta()  # A zero timeout means non-expiring
     IMMEDIATE_EXPIRING = timedelta(seconds=-1)  # A negative value implies immediate expiration
-    KDF_OPS_LIMIT_LOW = 3
-    KDF_MEM_LIMIT_LOW = 8192
 
     def __init__(self,
                  filename: Union[str, bytes, PathLike] = None,
@@ -568,7 +564,6 @@ class Cacheable(UserDict[str, V]):
         composite_prefix = f"{self.prefix}.{prefix}" if self.prefix else str(prefix)
         subcache = Cacheable(
             parent=self,
-            # filename=self.filename,
             default_expiration=default_expiration \
                 if default_expiration is not None else self.default_expiration,
             prefix=composite_prefix,
