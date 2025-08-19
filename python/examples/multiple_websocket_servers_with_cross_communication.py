@@ -12,7 +12,7 @@ Still working on aiohttp v3.3 changes - June 2018
 """
 import asyncio
 import datetime
-import random
+import secrets
 import sys
 import time
 import traceback
@@ -133,7 +133,7 @@ class RandomQuoteHandler(WebsocketHandler):
             while not ws.closed and counter < self.count:
                 # print("LOOP BEGINNING AGAIN", flush=True)
                 await asyncio.sleep(1)
-                quote = random.choice(self.QUOTES)
+                quote = secrets.choice(self.QUOTES)
                 try:
                     print("Sending quote:", quote)
                     await ws.send_json({"quote": quote})
