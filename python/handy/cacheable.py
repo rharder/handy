@@ -12,6 +12,7 @@ import logging
 import pickle
 import uuid
 from collections import UserDict, defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from os import PathLike
 from pathlib import Path
@@ -101,6 +102,9 @@ class Cacheable(UserDict[str, V]):
         if data_backing is not None:  # I don't remember what I thought this data_backing thing is
             self.data = data_backing
 
+        # Manage warnings that are displayed
+        self.already_warned: dict[str, bool] = {}
+
         # Data backing is broken in data and meta elements (?)
         if "data" not in self.data:
             self.data["data"] = {}
@@ -140,12 +144,28 @@ class Cacheable(UserDict[str, V]):
                 f"password={'<REDACTED>' if self.__cache_level_key else 'NOT SET'})")
 
     @property
-    def filename(self) -> Path:
+    def filename(self) -> Optional[Path]:
         if self._filename:
-            if not self._filename.is_file():
-                # Try creating parent directories, just in case
-                self._filename.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                if not self._filename.is_file():
+                    # Try creating parent directories, just in case
+                    try:
+                        self._filename.parent.mkdir(parents=True, exist_ok=True)
+                    except Exception as ex:
+                        err_msg = f"Could not create parent directories leading to {self._filename.absolute()}: {ex}"
+                        if not self.already_warned.get(err_msg):
+                            logger.warning(err_msg)
+                            self.already_warned[err_msg] = True
+                        return None
+            except Exception as ex:
+                err_msg = f"Could not check existence of {self._filename!r}: {ex}"
+                if not self.already_warned.get(err_msg):
+                    logger.warning(err_msg)
+                    self.already_warned[err_msg] = True
+                return None
+
             return self._filename
+
         elif self.parent is not None:
             return self.parent.filename
 
@@ -155,7 +175,7 @@ class Cacheable(UserDict[str, V]):
         # Step 1: if we're changing filenames, read the whole thing into memory
         if self._filename and self._filename != filename:
             try:
-                with SqliteDict(self._filename, tablename=self.data_tablename) as db:
+                with self.sqlitedict(filename=self._filename, tablename=self.data_tablename) as db:
                     self.data.update(db)
                     logger.debug(f"Changing filenames, reading all data from old file {self._filename!r}")
             except Exception as ex:
@@ -166,8 +186,20 @@ class Cacheable(UserDict[str, V]):
         self._filename = Path(filename)
 
         # Step 3: Write everything to disk
-        with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+        with self.sqlitedict(filename=self._filename, tablename=self.data_tablename, writeable=True) as db:
             db.update(self.data)
+
+    @contextmanager
+    def sqlitedict(self, filename=None, tablename=None, writeable: bool = None) -> SqliteDict:
+        """Provides a single point to access SqliteDict and thereby handle error messages better."""
+        try:
+            with SqliteDict(filename=filename, tablename=tablename, autocommit=writeable) as db:
+                yield db
+        except Exception as ex:
+            err_msg = f"Error accessing file {filename!r} and table {tablename!r}: {ex}"
+            if err_msg not in self.already_warned:
+                logger.warning(err_msg)
+                self.already_warned[err_msg] = True
 
     @property
     def data_tablename(self):
@@ -248,7 +280,7 @@ class Cacheable(UserDict[str, V]):
     def __collect_keys(self) -> Set[Any]:
         keys = set(self.data["data"].keys())
         if self.filename:
-            with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename) as db:
                 keys.update(db.keys())
 
         # Step 2: Filter out keys that don't have correct prefix
@@ -282,7 +314,7 @@ class Cacheable(UserDict[str, V]):
         except KeyError:
             ...
         if self.filename:
-            with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename, writeable=True) as db:
                 try:
                     del db[_key]
                     logger.debug(f"__delitem__: Deleted {_key} from sqlite file {self.filename}")
@@ -303,7 +335,7 @@ class Cacheable(UserDict[str, V]):
             return not item.expired
 
         elif self.filename:
-            with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
                     if item.expired:
@@ -353,7 +385,7 @@ class Cacheable(UserDict[str, V]):
         # Step 3: Save the item both in the in-memory 'data' field and the file cache
         self.data["data"][_key] = item
         if self.filename:
-            with SqliteDict(self.filename, autocommit=True, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename, writeable=True) as db:
                 db[_key] = item
 
     def trim_expired(self) -> "Cacheable":
@@ -381,7 +413,7 @@ class Cacheable(UserDict[str, V]):
         if _key in self.data["data"]:
             item = self.data["data"][_key]
         elif self.filename:
-            with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["data"][_key] = item  # Cache to in-memory as well
@@ -396,7 +428,7 @@ class Cacheable(UserDict[str, V]):
             if "data" in self.data and _key in self.data["data"]:
                 del self.data["data"][_key]  # Delete from memory
             if self.filename:
-                with SqliteDict(self.filename, tablename=self.data_tablename, autocommit=True) as db:
+                with self.sqlitedict(filename=self.filename, tablename=self.data_tablename, writeable=True) as db:
                     if _key in db:
                         del db[_key]  # Delete from file cache
 
@@ -422,7 +454,7 @@ class Cacheable(UserDict[str, V]):
         remaining_keys = [k for k in _keys if k not in data_items]
         db_items = {}
         if self.filename:
-            with SqliteDict(self.filename, tablename=self.data_tablename) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename) as db:
                 db_items = {k: db[k] for k in remaining_keys if k in db}
 
         results.update(data_items)
@@ -439,7 +471,7 @@ class Cacheable(UserDict[str, V]):
 
                 # Delete from database file (more efficient to do it in bulk)
                 if self.filename:
-                    with SqliteDict(self.filename, tablename=self.data_tablename, autocommit=True) as db:
+                    with self.sqlitedict(filename=self.filename, tablename=self.data_tablename, writeable=True) as db:
                         for _key in expired_keys:
                             if _key in db:
                                 del db[_key]  # Delete from file cache
@@ -532,7 +564,7 @@ class Cacheable(UserDict[str, V]):
         if _key in self.data["meta"]:
             item = self.data["meta"][_key]
         elif self.filename:
-            with SqliteDict(self.filename, tablename=self.meta_tablename, autocommit=True) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.meta_tablename, writeable=True) as db:
                 if _key in db:
                     item = db[_key]
                     self.data["meta"][_key] = item  # Save to in-memory as well
@@ -548,7 +580,7 @@ class Cacheable(UserDict[str, V]):
         _key = f"__meta__.{self._keytransform(key)}"
         self.data["meta"][_key] = value
         if self.filename:
-            with SqliteDict(self.filename, tablename=self.meta_tablename, autocommit=True) as db:
+            with self.sqlitedict(filename=self.filename, tablename=self.data_tablename, writeable=True) as db:
                 db[_key] = value
 
     def sub_cache(self,
