@@ -11,8 +11,7 @@ from unittest import TestCase
 
 from handy.cacheable import Cacheable
 
-
-# logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
 
 
 class TestCacheable(TestCase):
@@ -310,3 +309,14 @@ class TestCacheable(TestCase):
 
         # Magically appears if we supply password
         self.assertEqual(special_word_2, cache_unencrypted.get(key=special_key_2, password=special_password))
+
+    def test_rename(self):
+        filename1 = "deleteme-cacheable-test-rename-start.sqlite3"
+        filename2 = "deleteme-cacheable-test-rename-end.sqlite3"
+        cache = Cacheable(filename1)
+        cache["a"] = "alpha"
+        cache.filename = filename2
+        self.assertEqual("alpha", cache["a"])
+        cache2 = Cacheable(filename2)
+        self.assertEqual("alpha", cache2["a"])
+

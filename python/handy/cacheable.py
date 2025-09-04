@@ -157,6 +157,18 @@ class Cacheable(UserDict[str, V]):
                             logger.warning(err_msg)
                             self.already_warned[err_msg] = True
                         return None
+
+                    # Try creating the file to check permissions
+                    try:
+                        with open(self._filename, "w") as _:
+                            pass
+                    except Exception as ex:
+                        err_msg = f"Could not create file {self._filename.absolute()}: {ex}"
+                        if not self.already_warned.get(err_msg):
+                            logger.warning(err_msg)
+                            self.already_warned[err_msg] = True
+                        return None
+
             except Exception as ex:
                 err_msg = f"Could not check existence of {self._filename!r}: {ex}"
                 if not self.already_warned.get(err_msg):
@@ -192,14 +204,19 @@ class Cacheable(UserDict[str, V]):
     @contextmanager
     def sqlitedict(self, filename=None, tablename=None, writeable: bool = None) -> SqliteDict:
         """Provides a single point to access SqliteDict and thereby handle error messages better."""
+        db = None
         try:
             with SqliteDict(filename=filename, tablename=tablename, autocommit=writeable) as db:
                 yield db
         except Exception as ex:
             err_msg = f"Error accessing file {filename!r} and table {tablename!r}: {ex}"
+            logger.warning(err_msg)
+            print(err_msg)
             if err_msg not in self.already_warned:
-                logger.warning(err_msg)
                 self.already_warned[err_msg] = True
+
+            yield SqliteDict(filename=":memory:", tablename=tablename,
+                             autocommit=writeable)  # Return a dummy object
 
     @property
     def data_tablename(self):
