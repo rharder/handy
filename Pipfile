@@ -9,6 +9,7 @@ sqlitedict = "*"
 pytimeparse = "*"
 python-dateutil = "*"
 aiohttp = "*"
+colorama = "*"
 
 [dev-packages]
 

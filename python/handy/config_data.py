@@ -93,6 +93,9 @@ class ConfigData(UserDict):
         """Looks up a key in the config and if it can be treated as a filename,
         returns the filename relative to the config file. Else returns None."""
         val = self.get(key)
+        if val is None:
+            return None
+
         path = (self.base_directory / val).resolve()
 
         if make_parents:
